@@ -210,17 +210,19 @@ nonce CSP and no-store caching.
 
 ## MCP protocol support
 
-Two endpoints, same 50 tools, same auth:
+Two endpoints, same 50 tools, resource and prompt, same auth:
 
 - **`/mcp`** — legacy Streamable HTTP (**2025-11-25**) via `@modelcontextprotocol/sdk` 1.32.2.
 - **`/mcp-v2`** — modern era (**2026-07-28**) via `@prefecthq/fastmcp-ts` 1.9.1, with tools
   registered per SoundCloud connection (handlers keep their bound `ToolContext`).
   Modern clients send `MCP-Protocol-Version: 2026-07-28`, the `Mcp-Method`
-  header, and the `io.modelcontextprotocol/{protocolVersion,clientInfo,clientCapabilities}`
-  `_meta` envelope.
+  header, the `Mcp-Name` header for `resources/read` / `prompts/get`, and the
+  `io.modelcontextprotocol/{protocolVersion,clientInfo,clientCapabilities}` `_meta`
+  envelope.
 
-Both paths share the same bearer/OAuth authentication, rate limits, CORS allowlist
-and security headers.
+Both endpoints expose the `soundcloud://guide` resource and the `plan_upload`
+prompt, from one definition in `src/mcp/resources.ts`, and share the same
+bearer/OAuth authentication, rate limits, CORS allowlist and security headers.
 
 ## Security
 

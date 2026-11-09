@@ -16,6 +16,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../tools/context.js";
 import { registerAllTools } from "../tools/index.js";
 import type { ToolRecord } from "../tools/registry.js";
+import { PROJECT_PROMPTS, PROJECT_RESOURCES } from "./resources.js";
 
 type Collector = { records: ToolRecord[] };
 
@@ -50,6 +51,41 @@ export function createModernServer(ctx: ToolContext): FastMCP {
         })
     );
   }
+
+  // Resources and prompts are connection-independent, but each connection's
+  // FastMCP instance must advertise them itself — the modern transport does not
+  // share state with the legacy SDK server.
+  for (const resource of PROJECT_RESOURCES) {
+    modern.resource(
+      {
+        uri: resource.uri,
+        name: resource.name,
+        title: resource.title,
+        description: resource.description,
+        mimeType: resource.mimeType,
+      },
+      () => resource.read()
+    );
+  }
+
+  for (const prompt of PROJECT_PROMPTS) {
+    modern.prompt(
+      {
+        name: prompt.name,
+        title: prompt.title,
+        description: prompt.description,
+        arguments: prompt.arguments,
+      },
+      (args) => ({
+        role: "user" as const,
+        content: {
+          type: "text" as const,
+          text: prompt.render((args ?? {}) as Record<string, string | undefined>),
+        },
+      })
+    );
+  }
+
   return modern;
 }
 

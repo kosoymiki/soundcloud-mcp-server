@@ -42,11 +42,12 @@ SoundCloud password.
 
 ## Protocol support
 
-Two MCP endpoints serve the same 50 tools: `/mcp` (legacy **2025-11-25**, official
-SDK 1.32.2) and `/mcp-v2` (modern **2026-07-28**, FastMCP 1.9.1, tools registered
-per SoundCloud connection). Modern requests need `MCP-Protocol-Version`,
-`Mcp-Method`, and the `io.modelcontextprotocol/*` `_meta` envelope. The MCP layer
-is isolated in `src/mcp/`; auth/panel/web-session/audio are shared.
+Two MCP endpoints serve the same 50 tools, the `soundcloud://guide` resource and
+the `plan_upload` prompt: `/mcp` (legacy **2025-11-25**, official SDK 1.32.2) and
+`/mcp-v2` (modern **2026-07-28**, FastMCP 1.9.1, tools registered per SoundCloud
+connection). Modern requests need `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`
+for reads/gets, and the `io.modelcontextprotocol/*` `_meta` envelope. The MCP
+layer is isolated in `src/mcp/`; auth/panel/web-session/audio are shared.
 
 ## Architecture (file map)
 

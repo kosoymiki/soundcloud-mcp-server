@@ -231,8 +231,28 @@ function redirectToSoundCloud(
 export function createOAuthRouter(deps: OAuthRouterDeps): Router {
   const { config, store, logger } = deps;
   const router = express.Router();
-  router.use(express.urlencoded({ extended: false, limit: "64kb" }));
-  router.use(express.json({ limit: "64kb" }));
+  // The router is mounted at "/" so unscoped body parsers would swallow the
+  // request stream before /mcp and /mcp-v2 can read it. Parse only the paths
+  // this router actually serves.
+  const parseForm = express.urlencoded({ extended: false, limit: "64kb" });
+  const parseJson = express.json({ limit: "64kb" });
+  router.use((req, res, next) => {
+    const owned =
+      req.path === "/register" ||
+      req.path.startsWith("/oauth/") ||
+      req.path.startsWith("/soundcloud/");
+    if (!owned) {
+      next();
+      return;
+    }
+    parseForm(req, res, (formError?: unknown) => {
+      if (formError) {
+        next(formError);
+        return;
+      }
+      parseJson(req, res, next);
+    });
+  });
 
   const resource = `${config.publicUrl}/mcp`;
 

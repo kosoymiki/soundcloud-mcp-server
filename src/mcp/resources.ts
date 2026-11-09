@@ -1,6 +1,10 @@
 /*
  * Copyright (C) 2026 soundcloud-mcp-server contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * Project resources and prompts defined once as transport-neutral specs, so the
+ * legacy (2025-11-25) SDK server and the modern (2026-07-28) FastMCP server
+ * expose identical content.
  */
 
 import { z } from "zod";
@@ -22,46 +26,103 @@ const GUIDE = `# soundcloud-mcp-server operating guide
 8. Done: typecheck rc 0, 48/48 tests, build, live /health smoke.
 `;
 
-export function registerProjectResources(server: McpServer): void {
-  server.registerResource(
-    "project-guide",
-    "soundcloud://guide",
-    {
-      title: "SoundCloud MCP project guide",
-      description: "Golden path, auth options, web-session pipeline, audio and security rules.",
-      mimeType: "text/markdown",
-    },
-    async (uri) => ({ contents: [{ uri: uri.href, text: GUIDE }] })
-  );
+export interface ProjectResourceSpec {
+  name: string;
+  uri: string;
+  title: string;
+  description: string;
+  mimeType: string;
+  /** Returns the resource body as text. */
+  read: () => string;
+}
 
-  server.registerPrompt(
-    "plan_upload",
-    {
-      title: "Plan a SoundCloud upload",
-      description: "Returns a concrete plan for uploading a file (API or web session) and verifying it.",
-      argsSchema: {
-        file: z.string().describe("Absolute path to the audio file"),
-        title: z.string().optional().describe("Track title"),
-        album: z.string().optional().describe("Existing album URN or album title"),
+export interface ProjectPromptSpec {
+  name: string;
+  title: string;
+  description: string;
+  arguments: { name: string; description?: string; required?: boolean }[];
+  /** Renders the prompt body from client-supplied arguments. */
+  render: (args: Record<string, string | undefined>) => string;
+}
+
+const PLAN_UPLOAD_ARGS: ProjectPromptSpec["arguments"] = [
+  { name: "file", description: "Absolute path to the audio file", required: true },
+  { name: "title", description: "Track title", required: false },
+  { name: "album", description: "Existing album URN or album title", required: false },
+];
+
+export const PROJECT_RESOURCES: readonly ProjectResourceSpec[] = [
+  {
+    name: "project-guide",
+    uri: "soundcloud://guide",
+    title: "SoundCloud MCP project guide",
+    description: "Golden path, auth options, web-session pipeline, audio and security rules.",
+    mimeType: "text/markdown",
+    read: () => GUIDE,
+  },
+];
+
+export const PROJECT_PROMPTS: readonly ProjectPromptSpec[] = [
+  {
+    name: "plan_upload",
+    title: "Plan a SoundCloud upload",
+    description: "Returns a concrete plan for uploading a file (API or web session) and verifying it.",
+    arguments: PLAN_UPLOAD_ARGS,
+    render: ({ file, title, album }) =>
+      [
+        `Upload plan for ${file ?? "(file not supplied)"}`,
+        `1. Confirm auth path: API app if registered, otherwise web session with SC_WEB_COOKIE_FILE.`,
+        `2. If the file must be edited, trim/slow it first and re-measure duration/LUFS/true peak.`,
+        `3. Call web_upload_track with file_path="${file ?? ""}"${title ? `, title="${title}"` : ""}${
+          album ? `, album_title or album_urn="${album}"` : ""
+        }.`,
+        `4. Verify: track page duration/state, album track_count, no duplicate title.`,
+        `5. Report Goal | Actions | Evidence | Result | Risks with URLs and IDs.`,
+      ].join("\n"),
+  },
+];
+
+/** Legacy (2025-11-25) registration on the official SDK server. */
+export function registerProjectResources(server: McpServer): void {
+  for (const resource of PROJECT_RESOURCES) {
+    server.registerResource(
+      resource.name,
+      resource.uri,
+      {
+        title: resource.title,
+        description: resource.description,
+        mimeType: resource.mimeType,
       },
-    },
-    ({ file, title, album }) => ({
-      messages: [
-        {
-          role: "user" as const,
-          content: {
-            type: "text" as const,
-            text: [
-              `Upload plan for ${file}`,
-              `1. Confirm auth path: API app if registered, otherwise web session with SC_WEB_COOKIE_FILE.`,
-              `2. If the file must be edited, trim/slow it first and re-measure duration/LUFS/true peak.`,
-              `3. Call web_upload_track with file_path="${file}"${title ? `, title="${title}"` : ""}${album ? `, album_title or album_urn="${album}"` : ""}.`,
-              `4. Verify: track page duration/state, album track_count, no duplicate title.`,
-              `5. Report Goal | Actions | Evidence | Result | Risks with URLs and IDs.`,
-            ].join("\n"),
+      async (uri) => ({ contents: [{ uri: uri.href, text: resource.read() }] })
+    );
+  }
+
+  for (const prompt of PROJECT_PROMPTS) {
+    const argsSchema: Record<string, z.ZodTypeAny> = {};
+    for (const arg of prompt.arguments) {
+      const field = z.string();
+      argsSchema[arg.name] = arg.required
+        ? field.describe(arg.description ?? "")
+        : field.optional().describe(arg.description ?? "");
+    }
+    server.registerPrompt(
+      prompt.name,
+      {
+        title: prompt.title,
+        description: prompt.description,
+        argsSchema,
+      },
+      (args) => ({
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: prompt.render(args as Record<string, string | undefined>),
+            },
           },
-        },
-      ],
-    })
-  );
+        ],
+      })
+    );
+  }
 }

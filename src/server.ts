@@ -5,6 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Config } from "./config.js";
@@ -277,16 +279,30 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
         else if (typeof value === "string") headers.append(key, value);
       }
       const url = new URL(req.originalUrl || "/mcp-v2", config.publicUrl).toString();
+      // Abort the FastMCP request when the client disconnects (SSE streams live until then).
+      const disconnect = new AbortController();
+      res.on("close", () => disconnect.abort());
       const webRequest = new Request(url, {
         method: req.method,
         headers,
+        signal: disconnect.signal,
         ...(body && req.method !== "GET" && req.method !== "HEAD" ? { body: body as unknown as BodyInit } : {}),
       });
       const response = await handleModernRequest(webRequest, modernContext);
       res.status(response.status);
       response.headers.forEach((value, key) => res.setHeader(key, value));
-      res.send(Buffer.from(await response.arrayBuffer()));
+      if (!response.body) {
+        res.end();
+        return;
+      }
+      // Stream instead of buffering: subscriptions/listen and notification
+      // streams stay open for the life of the connection.
+      await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), res);
     } catch (error) {
+      if (res.headersSent || res.writableEnded) {
+        res.destroy();
+        return;
+      }
       res.status(500).json({ error: true, code: "INTERNAL", message: error instanceof Error ? error.message : String(error) });
     }
   });
