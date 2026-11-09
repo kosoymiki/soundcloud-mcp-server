@@ -5,12 +5,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../tools/context.js";
-import { registerProfileTools } from "../tools/profile.js";
-import { registerTrackTools } from "../tools/tracks.js";
-import { registerPlaylistTools } from "../tools/playlists.js";
-import { registerSocialTools } from "../tools/social.js";
-import { registerAudioTools } from "../tools/audio.js";
-import { registerWebTools } from "../tools/web.js";
+import { registerAllTools } from "../tools/index.js";
 import { registerProjectResources } from "./resources.js";
 
 export function createMcpServer(ctx: ToolContext): McpServer {
@@ -19,12 +14,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     version: ctx.config.version,
   });
 
-  registerProfileTools(server, ctx);
-  registerTrackTools(server, ctx);
-  registerPlaylistTools(server, ctx);
-  registerSocialTools(server, ctx);
-  registerAudioTools(server, ctx);
-  registerWebTools(server, ctx);
+  registerAllTools(server, ctx);
   registerProjectResources(server);
 
   return server;

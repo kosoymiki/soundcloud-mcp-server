@@ -42,11 +42,11 @@ SoundCloud password.
 
 ## Protocol support
 
-Targets MCP **2025-11-25** (latest supported by `@modelcontextprotocol/sdk`
-1.32.2). The 2026-07-28 modern generation requires the v2 packages
-(`@modelcontextprotocol/server` or `@prefecthq/fastmcp-ts`) and is an explicit
-v3 scope decision, not a defect; the MCP layer is isolated in `src/mcp/` so the
-migration does not touch auth/panel/web-session/audio.
+Two MCP endpoints serve the same 50 tools: `/mcp` (legacy **2025-11-25**, official
+SDK 1.32.2) and `/mcp-v2` (modern **2026-07-28**, FastMCP 1.9.1, tools registered
+per SoundCloud connection). Modern requests need `MCP-Protocol-Version`,
+`Mcp-Method`, and the `io.modelcontextprotocol/*` `_meta` envelope. The MCP layer
+is isolated in `src/mcp/`; auth/panel/web-session/audio are shared.
 
 ## Architecture (file map)
 

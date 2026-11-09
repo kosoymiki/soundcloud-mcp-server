@@ -193,6 +193,8 @@ export function createPanelRouter(deps: PanelDeps): Router {
   const { config, store, apiFactory, uploads, audio, events, authenticator, logger } = deps;
   const router = express.Router();
   const json = express.json({ limit: "256kb" });
+  const AUTH = Symbol("scmcp.auth");
+  type AuthedRequest = Request & { [AUTH]?: AuthResult };
 
   const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
     const auth = authenticator.authenticate(req);
@@ -205,11 +207,11 @@ export function createPanelRouter(deps: PanelDeps): Router {
       res.status(401).json({ error: true, code: "NEEDS_REAUTH", message: "SoundCloud connection missing." });
       return;
     }
-    (req as Request & { auth?: AuthResult }).auth = auth;
+    (req as AuthedRequest)[AUTH] = auth;
     next();
   };
 
-  const authOf = (req: Request): AuthResult => (req as Request & { auth?: AuthResult }).auth as AuthResult;
+  const authOf = (req: Request): AuthResult => (req as AuthedRequest)[AUTH] as AuthResult;
 
   // ── Pages ──────────────────────────────────────────────────────────────────
 

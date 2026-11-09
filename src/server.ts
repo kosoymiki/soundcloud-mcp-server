@@ -18,6 +18,7 @@ import { AudioService } from "./audio/service.js";
 import { pruneStagedUploads } from "./uploads/staging.js";
 import { EventBus } from "./events.js";
 import { McpSessionManager } from "./mcp/sessions.js";
+import { handleModernRequest } from "./mcp/modern.js";
 import { createMcpServer } from "./mcp/server.js";
 import { Authenticator } from "./http/auth.js";
 import { createPanelRouter } from "./panel/api.js";
@@ -241,9 +242,57 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
     })
   );
 
-  // MCP endpoint (Streamable HTTP)
-  app.all("/mcp", corsForMcp(config), express.json({ limit: "4mb" }), async (req: Request, res: Response) => {
+  // Modern-era MCP endpoint (2026-07-28) — same tools, FastMCP transport.
+  app.all("/mcp-v2", corsForMcp(config), async (req: Request, res: Response) => {
     if (!apiLimiter.allow(clientKey(req))) {
+      res.status(429).json({ error: true, code: "RATE_LIMITED", message: "Too many MCP requests." });
+      return;
+    }
+    const auth = authenticator.authenticate(req);
+    if (!auth) {
+      res.status(401).json({ error: true, code: "UNAUTHORIZED", message: "Bearer token required." });
+      return;
+    }
+    if (!store.getConnection(auth.connectionId)) {
+      res.status(401).json({ error: true, code: "NEEDS_REAUTH", message: "Connection missing." });
+      return;
+    }
+    const modernContext = {
+      api: apiFactory(auth.connectionId),
+      uploads: uploads.withApi(apiFactory(auth.connectionId)),
+      audio,
+      config,
+      logger: logger.child({ connection: auth.connectionId }),
+      events,
+      connectionId: auth.connectionId,
+      isLoopback: isLoopbackAddress(req.socket.remoteAddress),
+    };
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (Array.isArray(value)) value.forEach((item) => headers.append(key, item));
+        else if (typeof value === "string") headers.append(key, value);
+      }
+      const url = new URL(req.originalUrl || "/mcp-v2", config.publicUrl).toString();
+      const webRequest = new Request(url, {
+        method: req.method,
+        headers,
+        ...(body && req.method !== "GET" && req.method !== "HEAD" ? { body: body as unknown as BodyInit } : {}),
+      });
+      const response = await handleModernRequest(webRequest, modernContext);
+      res.status(response.status);
+      response.headers.forEach((value, key) => res.setHeader(key, value));
+      res.send(Buffer.from(await response.arrayBuffer()));
+    } catch (error) {
+      res.status(500).json({ error: true, code: "INTERNAL", message: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  // MCP endpoint (Streamable HTTP)
+  app.all("/mcp", corsForMcp(config), express.json({ limit: "4mb" }), async (req: Request, res: Response) => {    if (!apiLimiter.allow(clientKey(req))) {
       res.status(429).json({ error: true, code: "RATE_LIMITED", message: "Too many MCP requests." });
       return;
     }

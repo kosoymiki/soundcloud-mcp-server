@@ -6,6 +6,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z, type ZodRawShape } from "zod";
 import { errorToMcp } from "../errors.js";
+import { recordTool } from "./registry.js";
 
 export interface ToolExtra {
   signal: AbortSignal;
@@ -30,6 +31,14 @@ export interface ToolDefinition {
 type Handler = (args: Record<string, unknown>, extra: ToolExtra) => Promise<unknown>;
 
 export function jsonTool(server: McpServer, name: string, definition: ToolDefinition, handler: Handler): void {
+  // Collector adapter for the modern (/mcp-v2) FastMCP endpoint.
+  const sink = (server as unknown as { __toolSink?: { record: (name: string, definition: ToolDefinition, handler: Handler) => void } }).__toolSink;
+  if (sink) {
+    sink.record(name, definition, handler);
+    return;
+  }
+  // Record once so the modern endpoint can also serve the same tool.
+  recordTool({ name, definition, handler } as never);
   server.registerTool(
     name,
     {

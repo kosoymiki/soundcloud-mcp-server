@@ -210,15 +210,17 @@ nonce CSP and no-store caching.
 
 ## MCP protocol support
 
-The server targets the **2025-11-25** MCP revision — the newest generation
-supported by `@modelcontextprotocol/sdk` **1.32.2** (the latest 1.x release;
-verified `SUPPORTED_PROTOCOL_VERSIONS` includes 2025-11-25/06-18/03-26 and
-nothing newer). The 2026-07-28 "modern" generation is not implemented by this
-SDK: supporting it requires migrating `src/mcp` + tool registration to the v2
-packages (`@modelcontextprotocol/server` 2.x or `@prefecthq/fastmcp-ts`).
-That migration is **out of scope for v2.0** — it is the only known framework
-delta, and no current feature depends on it. The upgrade path is documented in
-`docs/ARCHITECTURE.md` (MCP layer is isolated behind `src/mcp/server.ts`).
+Two endpoints, same 50 tools, same auth:
+
+- **`/mcp`** — legacy Streamable HTTP (**2025-11-25**) via `@modelcontextprotocol/sdk` 1.32.2.
+- **`/mcp-v2`** — modern era (**2026-07-28**) via `@prefecthq/fastmcp-ts` 1.9.1, with tools
+  registered per SoundCloud connection (handlers keep their bound `ToolContext`).
+  Modern clients send `MCP-Protocol-Version: 2026-07-28`, the `Mcp-Method`
+  header, and the `io.modelcontextprotocol/{protocolVersion,clientInfo,clientCapabilities}`
+  `_meta` envelope.
+
+Both paths share the same bearer/OAuth authentication, rate limits, CORS allowlist
+and security headers.
 
 ## Security
 
