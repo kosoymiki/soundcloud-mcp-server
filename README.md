@@ -208,6 +208,18 @@ only) provides: Overview, Upload (drag & drop queue), Tracks, Playlists,
 Social, Audio lab, Settings. Mutations require the CSRF header; pages use a
 nonce CSP and no-store caching.
 
+## MCP protocol support
+
+The server targets the **2025-11-25** MCP revision — the newest generation
+supported by `@modelcontextprotocol/sdk` **1.32.2** (the latest 1.x release;
+verified `SUPPORTED_PROTOCOL_VERSIONS` includes 2025-11-25/06-18/03-26 and
+nothing newer). The 2026-07-28 "modern" generation is not implemented by this
+SDK: supporting it requires migrating `src/mcp` + tool registration to the v2
+packages (`@modelcontextprotocol/server` 2.x or `@prefecthq/fastmcp-ts`).
+That migration is **out of scope for v2.0** — it is the only known framework
+delta, and no current feature depends on it. The upgrade path is documented in
+`docs/ARCHITECTURE.md` (MCP layer is isolated behind `src/mcp/server.ts`).
+
 ## Security
 
 - Tokens/secrets: AES-256-GCM state, 0600 files, 0700 dirs; logger redacts

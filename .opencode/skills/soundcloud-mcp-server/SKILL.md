@@ -40,6 +40,14 @@ SoundCloud password.
    open `/panel` (redirects to login), POST `/mcp` without token → 401 +
    `WWW-Authenticate`.
 
+## Protocol support
+
+Targets MCP **2025-11-25** (latest supported by `@modelcontextprotocol/sdk`
+1.32.2). The 2026-07-28 modern generation requires the v2 packages
+(`@modelcontextprotocol/server` or `@prefecthq/fastmcp-ts`) and is an explicit
+v3 scope decision, not a defect; the MCP layer is isolated in `src/mcp/` so the
+migration does not touch auth/panel/web-session/audio.
+
 ## Architecture (file map)
 
 | Layer | Files | Responsibility |
