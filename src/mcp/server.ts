@@ -11,6 +11,7 @@ import { registerPlaylistTools } from "../tools/playlists.js";
 import { registerSocialTools } from "../tools/social.js";
 import { registerAudioTools } from "../tools/audio.js";
 import { registerWebTools } from "../tools/web.js";
+import { registerProjectResources } from "./resources.js";
 
 export function createMcpServer(ctx: ToolContext): McpServer {
   const server = new McpServer({
@@ -24,6 +25,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
   registerSocialTools(server, ctx);
   registerAudioTools(server, ctx);
   registerWebTools(server, ctx);
+  registerProjectResources(server);
 
   return server;
 }
