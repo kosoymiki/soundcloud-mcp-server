@@ -1,0 +1,22 @@
+services:
+  soundcloud-mcp:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      SC_REDIRECT_URI: ${SC_REDIRECT_URI:-http://localhost:3000/soundcloud/callback}
+      SC_CLIENT_ID: ${SC_CLIENT_ID}
+      SC_CLIENT_SECRET: ${SC_CLIENT_SECRET}
+      MCP_MODE: ${MCP_MODE:-both}
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      # MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY}
+    volumes:
+      - sc-data:/data
+      # Mount your music library read-only for uploads, e.g.:
+      # - /sdcard/Music:/music:ro
+    restart: unless-stopped
+
+volumes:
+  sc-data:

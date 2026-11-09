@@ -1,0 +1,38 @@
+{
+  "name": "soundcloud-mcp-server",
+  "version": "2.0.0",
+  "description": "Production-grade SoundCloud MCP server: upload tracks, manage your artist profile, playlists and social graph, plus a browser panel controllable from any MCP client.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Fork maintainers; original work Copyright (C) 2026 Marcell Kehmstedt",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": ["dist", "README.md", "SECURITY.md", "LICENSE", "docs", ".opencode"],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "auth": "node scripts/sc.mjs auth",
+    "e2e": "node scripts/e2e.mjs",
+    "cli": "node scripts/sc.mjs",
+    "web-upload": "node dist/web/cli.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "busboy": "^1.6.0",
+    "express": "^4.21.2",
+    "puppeteer-core": "^25.16.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
