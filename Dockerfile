@@ -10,6 +10,9 @@ RUN npm run build
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Web-session automation and the audio lab need a browser and ffmpeg at runtime.
+RUN apk add --no-cache chromium ffmpeg
+ENV SC_WEB_CHROME=/usr/bin/chromium-browser
 COPY package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist ./dist

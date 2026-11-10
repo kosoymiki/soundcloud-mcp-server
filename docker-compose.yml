@@ -11,6 +11,7 @@ services:
       MCP_MODE: ${MCP_MODE:-both}
       HOST: 0.0.0.0
       DATA_DIR: /data
+      SC_MEDIA_DIRS: /music
       # MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY}
     volumes:
       - sc-data:/data
