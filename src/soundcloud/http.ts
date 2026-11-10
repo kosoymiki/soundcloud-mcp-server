@@ -75,6 +75,14 @@ export class HttpClient {
           status: 400,
         });
       }
+      // Never downgrade a credentialed request from the configured https API to http.
+      try {
+        if (new URL(this.deps.config.sc.apiBase).protocol === "https:" && url.protocol !== "https:") {
+          throw new AppError("BAD_REQUEST", "Refusing to send credentials over plain http.", { status: 400 });
+        }
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+      }
       if (query) appendQuery(url, query);
       return url.toString();
     }
@@ -104,7 +112,11 @@ export class HttpClient {
     const method = options.method ?? "GET";
     const url = this.buildUrl(pathOrUrl, options.query);
     const timeoutMs = options.timeoutMs ?? this.deps.config.sc.timeoutMs;
-    const maxRetries = options.retryable === false ? 0 : this.deps.config.sc.maxRetries;
+    const idempotent = method === "GET";
+    // Retrying a non-idempotent request can duplicate side effects (a second
+    // track/comment/playlist), so it is opt-in only.
+    const retryAllowed = options.retryable === true || (options.retryable !== false && idempotent);
+    const maxRetries = retryAllowed ? this.deps.config.sc.maxRetries : 0;
     let refreshed = false;
     let attempt = 0;
 
@@ -174,7 +186,7 @@ export class HttpClient {
         continue;
       }
 
-      if ((response.status === 429 || (response.status >= 500 && method === "GET")) && attempt < maxRetries) {
+      if ((response.status === 429 || response.status >= 500) && retryAllowed && attempt < maxRetries) {
         await response.body?.cancel().catch(() => undefined);
         const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
         const delay = retryAfter ?? backoffMs(attempt, 500, 8_000);

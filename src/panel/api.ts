@@ -48,11 +48,21 @@ function nonce(): string {
   return randomBytes(16).toString("base64");
 }
 
+function allowedPanelOrigins(config: Config): Set<string> {
+  const origins = new Set<string>([`http://localhost:${config.port}`, `http://127.0.0.1:${config.port}`]);
+  try {
+    origins.add(new URL(config.publicUrl).origin);
+  } catch {
+    // publicUrl is validated by loadConfig().
+  }
+  return origins;
+}
+
 function originAllowed(config: Config, req: Request): boolean {
   const origin = req.headers.origin;
   if (typeof origin !== "string" || origin.length === 0) return true;
   try {
-    return new URL(origin).origin === new URL(config.publicUrl).origin;
+    return allowedPanelOrigins(config).has(new URL(origin).origin);
   } catch {
     return false;
   }
@@ -117,6 +127,7 @@ function parseUpload(req: Request, config: Config): Promise<{ fields: Record<str
       const path = join(tmpDir, `${randomUUID()}-${safeName}`);
       file = { path, filename: safeName, size: 0 };
       fileStream = createWriteStream(path, { mode: 0o600 });
+      stream.once("error", () => failStream(new Error("upload stream failed")));
       stream.on("data", (chunk: Buffer) => {
         if (file) file.size += chunk.length;
       });
@@ -131,6 +142,21 @@ function parseUpload(req: Request, config: Config): Promise<{ fields: Record<str
       settled = true;
       cleanup();
       reject(new AppError("BAD_REQUEST", `Upload parse failed: ${error.message}`, { status: 400 }));
+    });
+
+    // A disk-full/broken stream must fail the request instead of crashing the
+    // process or leaving the promise pending forever.
+    const failStream = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new AppError("INTERNAL", `Could not store the uploaded file: ${error.message}`, { status: 500 }));
+    };
+    req.once("aborted", () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new AppError("BAD_REQUEST", "Upload aborted by the client.", { status: 400 }));
     });
 
     busboy.on("close", () => {
@@ -149,6 +175,7 @@ function parseUpload(req: Request, config: Config): Promise<{ fields: Record<str
       }
       const finalFile = file;
       if (fileStream) {
+        fileStream.once("error", failStream);
         fileStream.end(() => resolve({ fields, file: finalFile }));
       } else {
         resolve({ fields, file: finalFile });
@@ -275,6 +302,16 @@ export function createPanelRouter(deps: PanelDeps): Router {
   router.post("/panel/setup", express.urlencoded({ extended: false, limit: "16kb" }), (req, res) => {
     if (!isLoopbackAddress(req.socket.remoteAddress)) {
       res.status(403).type("text/plain").send("Device setup is available only from loopback.");
+      return;
+    }
+    // The form is same-origin; reject DNS-rebinding and cross-site submissions.
+    const site = req.headers["sec-fetch-site"];
+    if (typeof site === "string" && site !== "same-origin" && site !== "none") {
+      res.status(403).type("text/plain").send("Cross-site setup request rejected.");
+      return;
+    }
+    if (!originAllowed(config, req)) {
+      res.status(403).type("text/plain").send("Cross-origin setup request rejected.");
       return;
     }
     const clientId = typeof req.body?.client_id === "string" ? req.body.client_id.trim() : "";
@@ -720,13 +757,19 @@ export function createPanelRouter(deps: PanelDeps): Router {
           status: 400,
         });
       }
+      // A dropped browser tab must not keep an ffmpeg job running for 30 minutes.
+      const controller = new AbortController();
+      req.once("close", () => controller.abort());
       res.json(
         await audio.process({
           filePath: body.file_path,
           operation,
+          signal: controller.signal,
           ...(typeof body.ratio === "number" ? { ratio: body.ratio } : {}),
           ...(typeof body.pitch === "number" ? { pitch: body.pitch } : {}),
-          ...(typeof body.algorithm === "string" ? { algorithm: body.algorithm as never } : {}),
+          ...(body.algorithm === "auto" || body.algorithm === "rubberband" || body.algorithm === "atempo"
+            ? { algorithm: body.algorithm }
+            : {}),
           ...(typeof body.target_lufs === "number" ? { targetLufs: body.target_lufs } : {}),
           ...(typeof body.true_peak === "number" ? { truePeak: body.true_peak } : {}),
           ...(typeof body.lra === "number" ? { lra: body.lra } : {}),
@@ -751,6 +794,12 @@ export function createPanelRouter(deps: PanelDeps): Router {
       if (typeof body.file_path !== "string") throw new AppError("BAD_REQUEST", "file_path is required.", { status: 400 });
       const api = apiFactory(authOf(req).connectionId);
       const metadata = (body.metadata && typeof body.metadata === "object" ? body.metadata : {}) as Record<string, unknown>;
+      if (metadata.title !== undefined && typeof metadata.title !== "string") {
+        throw new AppError("BAD_REQUEST", "metadata.title must be a string.", { status: 400 });
+      }
+      if (metadata.tags !== undefined && typeof metadata.tags !== "string" && !Array.isArray(metadata.tags)) {
+        throw new AppError("BAD_REQUEST", "metadata.tags must be a string or an array.", { status: 400 });
+      }
       const result = await uploads.withApi(api).upload({
         filePath: body.file_path,
         metadata: metadata as never,
@@ -963,16 +1012,22 @@ export function createPanelRouter(deps: PanelDeps): Router {
     });
     res.write("retry: 3000\n\n");
     const send = (event: ServerEvent): void => {
+      if (res.writableEnded || res.destroyed) return;
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
     const unsubscribe = events.subscribe(send);
-    const heartbeat = setInterval(() => res.write(": ping\n\n"), 20_000);
+    const heartbeat = setInterval(() => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(": ping\n\n");
+    }, 20_000);
     heartbeat.unref();
-    req.on("close", () => {
+    const close = (): void => {
       clearInterval(heartbeat);
       unsubscribe();
-      res.end();
-    });
+      if (!res.writableEnded) res.end();
+    };
+    req.once("close", close);
+    res.once("close", close);
   });
 
   router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

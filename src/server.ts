@@ -35,6 +35,9 @@ export interface ServerHandle {
   url: string;
 }
 
+/** Hard cap for JSON-RPC bodies on both MCP transports (matches /mcp's parser). */
+const MAX_MCP_BODY_BYTES = 4 * 1024 * 1024;
+
 class RateLimiter {
   private readonly buckets = new Map<string, { count: number; resetAt: number }>();
 
@@ -128,9 +131,13 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
 
   const uploads = new UploadService(config, logger, events, apiFactory("local"));
   const audio = new AudioService(config, logger, events, uploads);
-  void pruneStagedUploads(join(config.dataDir, "uploads")).then((removed) => {
-    if (removed > 0) logger.info("Pruned staged uploads", { removed });
-  });
+  void pruneStagedUploads(join(config.dataDir, "uploads"))
+    .then((removed) => {
+      if (removed > 0) logger.info("Pruned staged uploads", { removed });
+    })
+    .catch((error: unknown) => {
+      logger.warn("Staged upload pruning failed", { error: error instanceof Error ? error.message : String(error) });
+    });
 
   const app = express();
   app.disable("x-powered-by");
@@ -143,20 +150,17 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
   const authLimiter = new RateLimiter(60, 60_000);
   const apiLimiter = new RateLimiter(600, 60_000);
 
-  // Health — public, no secrets.
+  // Health — public, no secrets (connection details require authentication).
   app.get("/health", (_req, res) => {
+    const connections = store.listConnections();
     res.setHeader("Cache-Control", "no-store").json({
       status: "ok",
       version: config.version,
       mode: config.mode,
       uptime_seconds: Math.round((Date.now() - config.startedAt) / 1000),
       mcp_sessions: sessions.size,
-      connections: store.listConnections().map((connection) => ({
-        id: connection.id,
-        label: connection.label,
-        needs_reauth: connection.needsReauth === true,
-        expires_at: new Date(connection.scExpiresAt).toISOString(),
-      })),
+      connections: connections.length,
+      needs_reauth: connections.filter((connection) => connection.needsReauth === true).length,
     });
   });
 
@@ -194,7 +198,14 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
 
   app.use((req, res, next) => {
     const host = req.headers.host;
-    if (req.path.startsWith("/mcp") && typeof host === "string" && !allowedHosts.has(host)) {
+    const guarded =
+      req.path.startsWith("/mcp") ||
+      req.path.startsWith("/panel") ||
+      req.path.startsWith("/api/") ||
+      req.path.startsWith("/soundcloud") ||
+      req.path.startsWith("/oauth") ||
+      req.path.startsWith("/register");
+    if (guarded && typeof host === "string" && !allowedHosts.has(host)) {
       res.status(421).json({ error: true, code: "FORBIDDEN", message: "Unexpected Host header." });
       return;
     }
@@ -252,6 +263,10 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
     }
     const auth = authenticator.authenticate(req);
     if (!auth) {
+      res.setHeader(
+        "WWW-Authenticate",
+        `Bearer realm="${config.publicUrl}", resource_metadata="${config.publicUrl}/.well-known/oauth-protected-resource/mcp"`
+      );
       res.status(401).json({ error: true, code: "UNAUTHORIZED", message: "Bearer token required." });
       return;
     }
@@ -270,8 +285,24 @@ export function createApp(config: Config, logger: Logger): ServerHandle {
       isLoopback: isLoopbackAddress(req.socket.remoteAddress),
     };
     try {
+      const declared = Number(req.headers["content-length"] ?? 0);
+      if (Number.isFinite(declared) && declared > MAX_MCP_BODY_BYTES) {
+        res.status(413).json({ error: true, code: "UPLOAD_TOO_LARGE", message: "MCP request body is too large." });
+        return;
+      }
       const chunks: Buffer[] = [];
-      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      let total = 0;
+      for await (const chunk of req) {
+        const buffer = Buffer.from(chunk);
+        total += buffer.length;
+        if (total > MAX_MCP_BODY_BYTES) {
+          res.setHeader("Connection", "close");
+          res.status(413).json({ error: true, code: "UPLOAD_TOO_LARGE", message: "MCP request body is too large." });
+          req.destroy();
+          return;
+        }
+        chunks.push(buffer);
+      }
       const body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
       const headers = new Headers();
       for (const [key, value] of Object.entries(req.headers)) {

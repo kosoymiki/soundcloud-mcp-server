@@ -156,6 +156,16 @@ export function parseStreamExpiry(url: string): number | null {
   return null;
 }
 
+export function isAmbiguousUploadFailure(sentBytes: number, fileSize: number, error: unknown): boolean {
+  if (!(error instanceof AppError)) return false;
+  if (sentBytes < fileSize) return false;
+  return (
+    error.code === "TIMEOUT" ||
+    error.code === "NETWORK" ||
+    (error.code === "API_ERROR" && (error.options.status ?? 0) >= 500)
+  );
+}
+
 export class SoundCloudApi {
   private readonly http: HttpClient;
 
@@ -384,7 +394,11 @@ export class SoundCloudApi {
         await new Promise((resolve) => setTimeout(resolve, Math.min(8_000, 750 * 2 ** attempt)));
         await this.deps.getAccessToken({ forceRefresh: true }).catch(() => undefined);
       }
-      const multipart = createMultipart(fields, file, "track[asset_data]", options.onProgress);
+      const progress = { sent: 0 };
+      const multipart = createMultipart(fields, file, "track[asset_data]", (sent, total) => {
+        progress.sent = sent;
+        options.onProgress?.(sent, total);
+      });
       try {
         return await this.http.request<SoundCloudTrack>("/tracks", {
           method: "POST",
@@ -397,6 +411,15 @@ export class SoundCloudApi {
       } catch (error) {
         lastError = error;
         if (error instanceof AppError) {
+          // If the whole body reached SoundCloud and only the response was lost,
+          // the track may already exist; retrying would create a duplicate.
+          if (isAmbiguousUploadFailure(progress.sent, file.size, error)) {
+            throw new AppError(
+              "NETWORK",
+              "The upload body was fully sent but SoundCloud did not confirm the track. Check the account before retrying to avoid a duplicate.",
+              { status: 502, cause: error }
+            );
+          }
           const retryable =
             error.code === "TOKEN_EXPIRED" ||
             error.code === "RATE_LIMITED" ||

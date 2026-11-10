@@ -47,6 +47,7 @@ function run(
 
     let stdout = "";
     let stderr = "";
+    let pending = "";
     let settled = false;
     const finish = (error: Error | null, code: number): void => {
       if (settled) return;
@@ -72,10 +73,18 @@ function run(
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       stdout += text;
+      if (stdout.length > 2_000_000) stdout = stdout.slice(-1_000_000);
       if (options.onStdout) {
-        for (const line of text.split("\n")) {
-          if (line.trim().length > 0) options.onStdout(line.trim());
+        pending += text;
+        let index = pending.indexOf("\n");
+        while (index !== -1) {
+          const line = pending.slice(0, index).trim();
+          pending = pending.slice(index + 1);
+          if (line.length > 0) options.onStdout(line);
+          index = pending.indexOf("\n");
         }
+        // Progress keys can be split across chunks; keep an incomplete tail.
+        if (pending.length > 64_000) pending = pending.slice(-32_000);
       }
     });
     child.stderr?.on("data", (chunk: Buffer) => {

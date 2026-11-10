@@ -6,6 +6,7 @@
 import { createReadStream, readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { createHash } from "node:crypto";
+import { pipeline } from "node:stream/promises";
 import { AppError } from "../errors.js";
 import type { WebActionSession } from "./actions.js";
 
@@ -166,9 +167,11 @@ export function buildAlbumInput(options: AlbumInputOptions): Record<string, unkn
   };
 }
 
-function md5File(path: string): string {
-  // Read in slices so multi-gigabyte uploads do not double their memory footprint.
-  return createHash("md5").update(readFileSync(path)).digest("hex");
+async function md5File(path: string): Promise<string> {
+  // Stream the file into the hash: a 4 GB upload must not be read into memory.
+  const hash = createHash("md5");
+  await pipeline(createReadStream(path), hash);
+  return hash.digest("hex");
 }
 
 export interface PutResult {
@@ -182,7 +185,7 @@ export interface PutResult {
 export async function putFileToPolicy(policy: UploadPolicy, filePath: string, mimeType: string): Promise<PutResult> {
   const stats = statSync(filePath);
   const headers = policyHeaders(policy, mimeType);
-  const md5 = md5File(filePath);
+  const md5 = await md5File(filePath);
   const inlineLimit = 64 * 1024 * 1024;
   const body = stats.size <= inlineLimit ? readFileSync(filePath) : createReadStream(filePath);
   if (!Buffer.isBuffer(body)) headers["Content-Length"] = String(stats.size);
@@ -190,6 +193,7 @@ export async function putFileToPolicy(policy: UploadPolicy, filePath: string, mi
     method: policy.method ?? "PUT",
     headers,
     body: body as unknown as BodyInit,
+    signal: AbortSignal.timeout(30 * 60_000),
     ...(Buffer.isBuffer(body) ? {} : { duplex: "half" as const }),
   });
   const etag = response.headers.get("etag")?.replace(/"/g, "") ?? null;
@@ -248,7 +252,17 @@ export class WebUploader {
       // The add-to-playlist action is registered on the album editor page, not the upload page.
       const playlistId = options.albumUrn.split(":").pop();
       await this.session.navigate(`https://soundcloud.com/n/album/${playlistId ?? ""}`);
-      await this.addTrackToAlbum(urn, options.albumUrn);
+      try {
+        await this.addTrackToAlbum(urn, options.albumUrn);
+      } catch (error) {
+        throw new AppError(
+          "API_ERROR",
+          `Track ${urn} was created, but adding it to ${options.albumUrn} failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          { status: 502, details: { track_urn: urn, album_urn: options.albumUrn } }
+        );
+      }
       album = { urn: options.albumUrn, added_track_urn: urn };
     } else if (options.albumTitle) {
       const urn = extractTrackUrn(track);

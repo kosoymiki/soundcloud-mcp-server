@@ -219,27 +219,31 @@ export class UploadService {
     });
 
     // Artwork: explicit path wins; otherwise reuse embedded APIC when present.
-    const artwork = request.artworkPath
-      ? this.resolvePath(request.artworkPath, "image")
-      : request.attachArtwork !== false && tags?.artwork
-        ? this.writeTempArtwork(tags.artwork.data, tags.artwork.mimeType)
-        : null;
+    // Only resolve it when the track URN is known, so a temp file is never left
+    // behind when the API response carried no URN.
+    if (trackUrn) {
+      const artwork = request.artworkPath
+        ? this.resolvePath(request.artworkPath, "image")
+        : request.attachArtwork !== false && tags?.artwork
+          ? this.writeTempArtwork(tags.artwork.data, tags.artwork.mimeType)
+          : null;
 
-    if (artwork && trackUrn) {
-      try {
-        const artworkFile = makeFilePart(artwork.path);
-        const updated = await this.api.uploadArtwork(trackUrn, artworkFile, request.signal);
-        track = updated as unknown as Record<string, unknown>;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`Track uploaded, but artwork failed: ${message}`);
-        this.logger.warn("Artwork upload failed", { track: trackUrn, error: message });
-      } finally {
-        if (!request.artworkPath) {
-          try {
-            unlinkSync(artwork.path);
-          } catch {
-            // Temp file cleanup is best effort.
+      if (artwork) {
+        try {
+          const artworkFile = makeFilePart(artwork.path);
+          const updated = await this.api.uploadArtwork(trackUrn, artworkFile, request.signal);
+          track = updated as unknown as Record<string, unknown>;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          warnings.push(`Track uploaded, but artwork failed: ${message}`);
+          this.logger.warn("Artwork upload failed", { track: trackUrn, error: message });
+        } finally {
+          if (!request.artworkPath) {
+            try {
+              unlinkSync(artwork.path);
+            } catch {
+              // Temp file cleanup is best effort.
+            }
           }
         }
       }

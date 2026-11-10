@@ -266,7 +266,14 @@ export class WebActionSession {
         { status: 401 }
       );
     }
-    const raw = JSON.parse(readFileSync(file, "utf8")) as { cookies?: CookieEntry[] };
+    let raw: { cookies?: CookieEntry[] };
+    try {
+      raw = JSON.parse(readFileSync(file, "utf8")) as { cookies?: CookieEntry[] };
+    } catch {
+      throw new AppError("UNAUTHORIZED", `Cookie file ${file} is not valid JSON; re-export it with the cookies command.`, {
+        status: 401,
+      });
+    }
     try {
       const mode = statSync(file).mode & 0o777;
       if ((mode & 0o077) !== 0) {
@@ -350,8 +357,17 @@ export class WebActionSession {
   }
 
   private buildChunkUrls(loaded: string[]): { urls: string[]; suffix: string } {
-    const suffix = loaded.map((url) => new URL(url).search).find((search) => search.length > 0) ?? "";
-    const urls = new Set(loaded);
+    let suffix = "";
+    const urls = new Set<string>();
+    for (const url of loaded) {
+      try {
+        const parsed = new URL(url);
+        urls.add(parsed.toString());
+        if (suffix.length === 0 && parsed.search.length > 0) suffix = parsed.search;
+      } catch {
+        // Ignore malformed resource entries; they cannot be fetched anyway.
+      }
+    }
     return { urls: [...urls], suffix };
   }
 

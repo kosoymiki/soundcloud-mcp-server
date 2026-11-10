@@ -107,7 +107,15 @@ function readOrCreateSecret(path: string, bytes: number): string {
     if (existing.length > 0) return existing;
   }
   const generated = randomBytes(bytes).toString("base64url");
-  writeFileSync(path, `${generated}\n`, { mode: 0o600 });
+  try {
+    // wx: never overwrite a secret another process created concurrently.
+    writeFileSync(path, `${generated}\n`, { mode: 0o600, flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const raced = readFileSync(path, "utf8").trim();
+    if (raced.length === 0) throw new Error(`Secret file ${path} exists but is empty; delete it to regenerate.`);
+    return raced;
+  }
   try {
     chmodSync(path, 0o600);
   } catch {
@@ -142,6 +150,9 @@ function parseMode(raw: string | undefined): McpMode {
 function intEnv(name: string, fallback: number, min: number, max: number): number {
   const raw = env(name);
   if (raw === undefined) return fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be an integer in [${min}, ${max}] (received ${JSON.stringify(raw)}).`);
+  }
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value) || value < min || value > max) {
     throw new Error(`${name} must be an integer in [${min}, ${max}] (received ${JSON.stringify(raw)}).`);

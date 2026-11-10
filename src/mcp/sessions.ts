@@ -5,7 +5,6 @@
 
 import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "../logger.js";
-import { TtlMap } from "../util/ttl.js";
 
 export interface McpSession {
   id: string;
@@ -24,8 +23,12 @@ export interface SessionManagerOptions {
 }
 
 export class McpSessionManager {
-  private readonly sessions = new TtlMap<string, McpSession>(60_000);
-  private readonly createdAt = new Map<string, number>();
+  /**
+   * Plain Map (not TtlMap): expiry must go through delete() so the transport is
+   * closed. A self-expiring map would drop entries before the manager could
+   * close them, leaking SSE connections and the server behind each session.
+   */
+  private readonly sessions = new Map<string, McpSession>();
 
   constructor(private readonly options: SessionManagerOptions) {}
 
@@ -35,17 +38,18 @@ export class McpSessionManager {
       if (oldest) this.delete(oldest.id);
     }
     const entry: McpSession = { ...session, createdAt: Date.now(), lastSeenAt: Date.now() };
-    this.sessions.set(session.id, entry, this.options.idleTtlMs);
-    this.createdAt.set(session.id, entry.createdAt);
+    this.sessions.set(session.id, entry);
     return entry;
   }
 
   get(id: string): McpSession | undefined {
     const entry = this.sessions.get(id);
-    if (entry) {
-      entry.lastSeenAt = Date.now();
-      this.sessions.set(id, entry, this.options.idleTtlMs);
+    if (!entry) return undefined;
+    if (Date.now() - entry.lastSeenAt > this.options.idleTtlMs) {
+      this.delete(id);
+      return undefined;
     }
+    entry.lastSeenAt = Date.now();
     return entry;
   }
 
@@ -56,16 +60,14 @@ export class McpSessionManager {
 
   delete(id: string): void {
     const entry = this.sessions.get(id);
+    if (!entry) return;
     this.sessions.delete(id);
-    this.createdAt.delete(id);
-    if (entry) {
-      void entry.transport.close().catch(() => undefined);
-    }
+    void entry.transport.close().catch(() => undefined);
   }
 
   sweep(): void {
     const now = Date.now();
-    for (const [id, entry] of this.sessions.entries()) {
+    for (const [id, entry] of this.sessions) {
       if (now - entry.lastSeenAt > this.options.idleTtlMs) {
         this.options.logger.debug("Closing idle MCP session", { session: id });
         this.delete(id);
@@ -74,7 +76,7 @@ export class McpSessionManager {
   }
 
   closeAll(): void {
-    for (const [id] of this.sessions.entries()) this.delete(id);
+    for (const id of [...this.sessions.keys()]) this.delete(id);
   }
 
   get size(): number {
@@ -83,7 +85,7 @@ export class McpSessionManager {
 
   private oldestSession(): McpSession | null {
     let oldest: McpSession | null = null;
-    for (const [, entry] of this.sessions.entries()) {
+    for (const entry of this.sessions.values()) {
       if (!oldest || entry.createdAt < oldest.createdAt) oldest = entry;
     }
     return oldest;

@@ -102,10 +102,16 @@ malicious root user, or a SoundCloud-side breach.
 ## Logging
 
 `Logger` redacts `access_token=…`, `refresh_token=…`, `client_secret=…`,
-`code_verifier=…`, `Authorization: OAuth|Bearer …` and matching JSON fields.
-Debug logs contain method/path/status/latency, not bodies of token exchanges.
+`code_verifier=…`, `Authorization: OAuth|Bearer …`, `cookie:`/`set-cookie:`
+values, SoundCloud `oauth_token`/`sc_session`/`datadome` values, decoded tokens
+(`scmcp_at_…`/`scmcp_rt_…`) and matching JSON fields. Debug logs contain
+method/path/status/latency, not bodies of token exchanges.
 
 ## Deployment guidance
+
+- **One process per `DATA_DIR`.** State is written atomically (temp + rename)
+  but there is no cross-process lock; two servers sharing a data dir would
+  last-writer-win and could lose rotated refresh tokens.
 
 - Keep the default `HOST=127.0.0.1` unless you put the server behind a TLS
   reverse proxy.

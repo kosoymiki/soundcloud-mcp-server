@@ -10,7 +10,9 @@ const LEVELS: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error:
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/(access_token|refresh_token|client_secret|code_verifier|code)=([^\s&,"']+)/gi, "$1=[REDACTED]"],
   [/(Authorization:\s*(?:OAuth|Bearer))\s+[^\s,"']+/gi, "$1 [REDACTED]"],
-  [/("(?:access_token|refresh_token|client_secret|sc_access_token|sc_refresh_token)"\s*:\s*")[^"]+/gi, "$1[REDACTED]"],
+  [/((?:authorization|cookie|set-cookie|oauth_token|sc_session|datadome)"?\s*[:=]\s*"?)([^\s,"']{6,})/gi, "$1[REDACTED]"],
+  [/("(?:access_token|refresh_token|client_secret|sc_access_token|sc_refresh_token|cookie)"\s*:\s*")[^"]+/gi, "$1[REDACTED]"],
+  [/(scmcp_(?:at|rt)_[A-Za-z0-9_-]{8,})/g, "[REDACTED_TOKEN]"],
 ];
 
 export function redact(input: string): string {

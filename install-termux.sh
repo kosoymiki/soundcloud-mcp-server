@@ -54,7 +54,7 @@ npm run typecheck
 npm run build
 
 if [ "$SKIP_TESTS" -eq 0 ]; then
-  say "Running unit tests (64)"
+  say "Running unit tests (72)"
   npm test
 fi
 

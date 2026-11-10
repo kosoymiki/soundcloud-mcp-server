@@ -321,7 +321,14 @@ export function readChromeCookies(dbPath: string): BrowserCookie[] {
     const cookies: BrowserCookie[] = [];
     for (const row of rows) {
       const encrypted = row.encrypted_value ? Buffer.from(row.encrypted_value) : null;
-      const value = encrypted ? decryptChromeValue(encrypted, key, row.host_key) : String(row.value ?? "");
+      let value: string;
+      try {
+        value = encrypted ? decryptChromeValue(encrypted, key, row.host_key) : String(row.value ?? "");
+      } catch {
+        // App-bound (v20) or undecryptable values are skipped instead of
+        // failing the whole export for one unrelated cookie.
+        continue;
+      }
       if (!value) continue;
       const expires = chromeExpiryToUnix(row.expires_utc);
       const sameSite = sameSiteName(row.samesite);
@@ -478,6 +485,7 @@ export async function refreshSoundCloudCookies(
 /** Inspect an existing cookie export without touching the browser. */
 export function inspectCookieFile(path: string): {
   exists: boolean;
+  malformed: boolean;
   mode: string | null;
   ageSeconds: number | null;
   cookies: number;
@@ -487,10 +495,25 @@ export function inspectCookieFile(path: string): {
   expiresInSeconds: number | null;
 } {
   if (!existsSync(path)) {
-    return { exists: false, mode: null, ageSeconds: null, cookies: 0, missingRequired: [...REQUIRED_COOKIES], exportedAt: null, tokenExpiresAt: null, expiresInSeconds: null };
+    return { exists: false, malformed: false, mode: null, ageSeconds: null, cookies: 0, missingRequired: [...REQUIRED_COOKIES], exportedAt: null, tokenExpiresAt: null, expiresInSeconds: null };
   }
   const stats = statSync(path);
-  const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<CookieExport>;
+  let raw: Partial<CookieExport>;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8")) as Partial<CookieExport>;
+  } catch {
+    return {
+      exists: true,
+      malformed: true,
+      mode: (stats.mode & 0o777).toString(8),
+      ageSeconds: Math.max(0, Math.round((Date.now() - stats.mtimeMs) / 1000)),
+      cookies: 0,
+      missingRequired: [...REQUIRED_COOKIES],
+      exportedAt: null,
+      tokenExpiresAt: null,
+      expiresInSeconds: null,
+    };
+  }
   const cookies = Array.isArray(raw.cookies) ? raw.cookies : [];
   const names = cookies.map((cookie) => cookie.name);
   const token = pickOAuthToken(cookies);
@@ -498,6 +521,7 @@ export function inspectCookieFile(path: string): {
   const nowSeconds = Math.floor(Date.now() / 1000);
   return {
     exists: true,
+    malformed: false,
     mode: (stats.mode & 0o777).toString(8),
     ageSeconds: Math.max(0, Math.round((Date.now() - stats.mtimeMs) / 1000)),
     cookies: cookies.length,

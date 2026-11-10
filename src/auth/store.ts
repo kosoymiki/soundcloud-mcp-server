@@ -140,14 +140,18 @@ export class Store {
   }): Connection {
     const existing = this.getConnection("local");
     const now = Date.now();
+    const refreshToken = input.refreshToken ?? existing?.scRefreshToken;
+    const clientId = input.clientId ?? existing?.scClientId;
+    const clientSecret = input.clientSecret ?? existing?.scClientSecret;
     const connection: Connection = {
       id: "local",
       label: "local",
       scAccessToken: input.accessToken,
-      ...(input.refreshToken ? { scRefreshToken: input.refreshToken } : {}),
-      ...(input.clientId ? { scClientId: input.clientId } : {}),
-      ...(input.clientSecret ? { scClientSecret: input.clientSecret } : {}),
+      ...(refreshToken ? { scRefreshToken: refreshToken } : {}),
+      ...(clientId ? { scClientId: clientId } : {}),
+      ...(clientSecret ? { scClientSecret: clientSecret } : {}),
       scExpiresAt: now + Math.max(30, input.expiresIn ?? 3600) * 1000,
+      ...(existing?.scopes ? { scopes: existing.scopes } : {}),
       needsReauth: false,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -217,8 +221,17 @@ export class Store {
   // ── Dynamic client registration ────────────────────────────────────────────
 
   registerClient(client: Omit<RegisteredClient, "createdAt">): RegisteredClient {
+    // Bound dynamic client registration: TTL alone would let an attacker grow
+    // the map for 30 days.
+    if (this.clients.size >= 1000) {
+      let oldest: RegisteredClient | null = null;
+      for (const [, entry] of this.clients.entries()) {
+        if (!oldest || entry.createdAt < oldest.createdAt) oldest = entry;
+      }
+      if (oldest) this.clients.delete(oldest.clientId);
+    }
     const record: RegisteredClient = { ...client, createdAt: Date.now() };
-    this.clients.set(record.clientId, record, 24 * 3600 * 1000);
+    this.clients.set(record.clientId, record, 30 * 24 * 3600 * 1000);
     return record;
   }
 
@@ -262,6 +275,8 @@ export class Store {
     kind: "access" | "refresh",
     ttlMs: number
   ): { token: string; expiresAt: number } {
+    // Long-running servers issue a token per login/refresh; keep the array bounded.
+    if (this.state.tokens.length > 500) this.pruneTokens();
     const token = randomToken(32, kind === "access" ? "scmcp_at_" : "scmcp_rt_");
     const record: McpTokenRecord = {
       hash: hashToken(token),

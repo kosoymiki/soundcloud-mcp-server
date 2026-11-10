@@ -65,6 +65,7 @@ export async function webSessionStatus(options: DoctorOptions = {}): Promise<Doc
   const warnings: string[] = [];
 
   if (!file.exists) errors.push(`no cookie file at ${cookieFile}; run the cookies command`);
+  if (file.malformed) errors.push("cookie file is not valid JSON; re-export it with the cookies command");
   if (file.mode && file.mode !== "600") warnings.push(`cookie file mode is ${file.mode}; expected 600`);
   if (file.missingRequired.length > 0) errors.push(`missing cookies: ${file.missingRequired.join(", ")}`);
   if (file.expiresInSeconds !== null && file.expiresInSeconds <= 0) errors.push("oauth_token is expired; re-export cookies");

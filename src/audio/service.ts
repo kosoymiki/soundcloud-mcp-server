@@ -4,7 +4,7 @@
  */
 
 import { mkdir, readFile, stat } from "node:fs/promises";
-import { statSync } from "node:fs";
+import { lstatSync, realpathSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../config.js";
@@ -284,6 +284,7 @@ export class AudioService {
     const jobId = randomUUID();
     let lastEmit = 0;
     const release = await this.semaphore.acquire();
+    const existedBefore = await this.exists(outputPath);
     try {
       await runFfmpeg(this.config.audio.ffmpegPath, args, {
         durationSeconds: input.duration_seconds,
@@ -302,6 +303,16 @@ export class AudioService {
           });
         },
       });
+    } catch (error) {
+      // Never leave a half-written artefact behind.
+      if (!existedBefore) {
+        try {
+          unlinkSync(outputPath);
+        } catch {
+          // Best effort.
+        }
+      }
+      throw error;
     } finally {
       release();
     }
@@ -450,12 +461,35 @@ export class AudioService {
     const allowedRoots = [...this.config.mediaRoots, this.config.audio.workDir];
     const verify = (candidate: string): string => {
       const absolute = resolvePath(candidate);
-      if (!allowedRoots.some((root) => isWithin(resolvePath(root), absolute))) {
+      let realParent: string;
+      try {
+        realParent = realpathSync(dirname(absolute));
+      } catch {
+        throw new AppError("BAD_REQUEST", `Output directory does not exist: ${dirname(absolute)}`, {
+          status: 400,
+        });
+      }
+      const realCandidate = join(realParent, basename(absolute));
+      try {
+        if (lstatSync(absolute).isSymbolicLink()) {
+          throw new AppError("FORBIDDEN", "Refusing to write through a symbolic link.", { status: 403 });
+        }
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+      }
+      const inside = allowedRoots.some((root) => {
+        try {
+          return isWithin(realpathSync(root), realCandidate);
+        } catch {
+          return false;
+        }
+      });
+      if (!inside) {
         throw new AppError("FORBIDDEN", `Output must stay inside SC_MEDIA_DIRS or the audio work dir.`, {
           status: 403,
         });
       }
-      return absolute;
+      return realCandidate;
     };
 
     if (requested && requested.trim().length > 0) {
