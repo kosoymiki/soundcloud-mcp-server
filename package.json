@@ -1,6 +1,6 @@
 {
   "name": "soundcloud-mcp-server",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Production-grade SoundCloud MCP server: upload tracks, manage your artist profile, playlists and social graph, plus a browser panel controllable from any MCP client.",
   "license": "AGPL-3.0-or-later",
   "author": "Fork maintainers; original work Copyright (C) 2026 Marcell Kehmstedt",

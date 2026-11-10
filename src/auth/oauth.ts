@@ -63,31 +63,47 @@ function cookieOptions(config: Config): string {
   return `Path=/; HttpOnly; SameSite=Lax${secure}`;
 }
 
-function renderLoginPage(config: Config, params: Record<string, string>, error?: string): string {
+function renderLoginPage(
+  config: Config,
+  params: Record<string, string>,
+  info: { clientName?: string; redirectUri?: string; needsCredentials: boolean },
+  error?: string
+): string {
   const fields = Object.entries(params)
     .map(([key, value]) => `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(value)}" />`)
     .join("\n");
+  const credentials = info.needsCredentials
+    ? `<label for="sc_client_id">SoundCloud client ID</label>
+    <input id="sc_client_id" name="sc_client_id" type="text" autocomplete="off" required
+           value="${escapeHtml(config.sc.clientId ?? "")}" />
+    <label for="sc_client_secret">SoundCloud client secret</label>
+    <input id="sc_client_secret" name="sc_client_secret" type="password" autocomplete="off" required />`
+    : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Connect SoundCloud</title>
+<title>Authorize MCP client</title>
 <style>
   :root { --accent: ${config.brandColor}; color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center;
          background: radial-gradient(1200px 600px at 50% -10%, #1d1d1d, #080808 60%);
          font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #eee; padding: 24px; }
-  .card { width: min(440px, 100%); background: #141414; border: 1px solid #2a2a2a;
+  .card { width: min(480px, 100%); background: #141414; border: 1px solid #2a2a2a;
           border-radius: 16px; padding: 28px; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
   h1 { font-size: 20px; margin: 0 0 6px; }
   p { margin: 0 0 18px; color: #9a9a9a; font-size: 13px; }
+  .grant { border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px; margin: 16px 0; background: #0d0d0d; }
+  .grant div { margin: 4px 0; font-size: 13px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #d8d8d8; word-break: break-all; }
   label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
           color: #8a8a8a; margin: 16px 0 6px; }
   input[type=text], input[type=password] { width: 100%; padding: 11px 12px; border-radius: 10px;
           border: 1px solid #333; background: #0d0d0d; color: #f2f2f2; font-size: 14px; }
   input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent); border-color: transparent; }
-  button { width: 100%; margin-top: 22px; padding: 12px; border: 0; border-radius: 10px;
+  button { width: 100%; margin-top: 10px; padding: 12px; border: 0; border-radius: 10px;
            background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; cursor: pointer; }
+  button.secondary { background: #2a2a2a; color: #ddd; }
   button:hover { filter: brightness(1.08); }
   .error { background: #3a1111; border: 1px solid #6b2020; color: #ffb4b4; padding: 10px 12px;
            border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
@@ -96,20 +112,23 @@ function renderLoginPage(config: Config, params: Record<string, string>, error?:
   code { background: #222; padding: 1px 5px; border-radius: 5px; }
 </style></head>
 <body><main class="card">
-  <h1>Connect SoundCloud</h1>
-  <p>This MCP server needs your SoundCloud application credentials to obtain a user token.
-     They are stored encrypted on this server and never sent to the MCP client.</p>
+  <h1>Authorize ${escapeHtml(info.clientName || "MCP client")}</h1>
+  <p>This MCP client asks this server for access to your SoundCloud account. The server will store
+     SoundCloud tokens encrypted on this device; the client only receives server-issued tokens.</p>
   ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
+  <div class="grant">
+    <div>Client: <span class="mono">${escapeHtml(info.clientName || "MCP client")}</span></div>
+    <div>Redirect: <span class="mono">${escapeHtml(info.redirectUri || "(registered redirect URI)")}</span></div>
+    <div>Scopes: <span class="mono">SoundCloud account access (profile, upload, playlists, social)</span></div>
+  </div>
   <form method="post" action="/oauth/authorize">
     ${fields}
-    <label for="sc_client_id">SoundCloud client ID</label>
-    <input id="sc_client_id" name="sc_client_id" type="text" autocomplete="off" required
-           value="${escapeHtml(config.sc.clientId ?? "")}" />
-    <label for="sc_client_secret">SoundCloud client secret</label>
-    <input id="sc_client_secret" name="sc_client_secret" type="password" autocomplete="off" required />
-    <button type="submit">Continue to SoundCloud</button>
+    ${credentials}
+    <button type="submit" name="decision" value="allow">Allow access</button>
+    <button type="submit" name="decision" value="deny" class="secondary" formnovalidate>Deny</button>
   </form>
-  <div class="hint">Create an app at <a href="https://soundcloud.com/you/apps" rel="noreferrer">soundcloud.com/you/apps</a>
+  <div class="hint">Only continue if you started this connection from your own MCP client.
+    Create an app at <a href="https://soundcloud.com/you/apps" rel="noreferrer">soundcloud.com/you/apps</a>
     and register <code>${escapeHtml(config.sc.redirectUri)}</code>.</div>
 </main></body></html>`;
 }
@@ -254,6 +273,7 @@ export function createOAuthRouter(deps: OAuthRouterDeps): Router {
     });
   });
 
+  const resources = new Set([`${config.publicUrl}/mcp`, `${config.publicUrl}/mcp-v2`]);
   const resource = `${config.publicUrl}/mcp`;
 
   router.get("/.well-known/oauth-authorization-server", (_req, res) => {
@@ -341,8 +361,8 @@ export function createOAuthRouter(deps: OAuthRouterDeps): Router {
       res.status(400).type("text/plain").send("code_challenge must be 43-128 base64url characters.");
       return;
     }
-    if (requestedResource && requestedResource !== resource) {
-      res.status(400).type("text/plain").send(`resource must be ${resource}`);
+    if (requestedResource && !resources.has(requestedResource)) {
+      res.status(400).type("text/plain").send(`resource must be ${[...resources].join(" or ")}`);
       return;
     }
     const client = store.getClient(clientId);
@@ -364,15 +384,11 @@ export function createOAuthRouter(deps: OAuthRouterDeps): Router {
       ...(requestedResource ? { resource: requestedResource } : {}),
     };
 
-    // Personal-device setup: credentials come from env or the encrypted store,
-    // so skip the form and send the browser straight to SoundCloud.
-    const appCredentials = resolveAppCredentials(config, store);
-    if (appCredentials) {
-      redirectToSoundCloud(config, store, logger, res, flowPayload, appCredentials);
-      return;
-    }
-
+    // Per-client consent (MCP security best practices): show the client name,
+    // redirect URI and scopes before the browser is sent to SoundCloud. The
+    // zero-form path only skips the credential inputs, never the consent.
     const flow = signValue(JSON.stringify(flowPayload satisfies FlowPayload), config.security.encryptionKey);
+    const appCredentials = resolveAppCredentials(config, store);
 
     res.setHeader("Set-Cookie", `${FLOW_COOKIE}=${flow}; ${cookieOptions(config)}; Max-Age=600`);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -382,9 +398,12 @@ export function createOAuthRouter(deps: OAuthRouterDeps): Router {
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     );
     res.send(
-      renderLoginPage(config, {
-        flow,
-      })
+      renderLoginPage(
+        config,
+        { flow },
+        { clientName: client.clientName, redirectUri, needsCredentials: !appCredentials },
+        undefined
+      )
     );
   });
 
@@ -419,6 +438,15 @@ export function createOAuthRouter(deps: OAuthRouterDeps): Router {
     const client = store.getClient(payload.clientId);
     if (!client || !client.redirectUris.includes(payload.redirectUri)) {
       res.status(400).type("text/plain").send("Client registration expired. Start again.");
+      return;
+    }
+
+    // Explicit consent is mandatory; a missing decision is treated as denial.
+    if (body.decision !== "allow") {
+      const denied = new URL(payload.redirectUri);
+      denied.searchParams.set("error", "access_denied");
+      denied.searchParams.set("state", payload.state);
+      res.redirect(denied.toString());
       return;
     }
 

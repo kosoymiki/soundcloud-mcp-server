@@ -101,6 +101,10 @@ test("full OAuth 2.1 + PKCE flow issues MCP tokens and binds sessions to them", 
     const authorizePage = await fetch(authorizeUrl, { redirect: "manual" });
     assert.equal(authorizePage.status, 200);
     const html = await authorizePage.text();
+    assert.match(html, /Authorize test-client/);
+    assert.match(html, /value="allow"/);
+    assert.match(html, /value="deny"/);
+    assert.match(html, new RegExp(redirectUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     const flow = /name="flow" value="([^"]+)"/.exec(html)?.[1];
     assert.ok(flow, "login page must include a signed flow");
     const cookie = authorizePage.headers.getSetCookie().find((value) => value.startsWith("scmcp_flow="));
@@ -108,6 +112,7 @@ test("full OAuth 2.1 + PKCE flow issues MCP tokens and binds sessions to them", 
 
     const form = new URLSearchParams({
       flow,
+      decision: "allow",
       sc_client_id: "sc-client",
       sc_client_secret: "sc-secret",
     });
@@ -127,6 +132,22 @@ test("full OAuth 2.1 + PKCE flow issues MCP tokens and binds sessions to them", 
     assert.equal(scLocation.pathname, "/authorize");
     const scState = scLocation.searchParams.get("state");
     assert.ok(scState);
+
+    // Denying consent must return access_denied to the registered redirect URI.
+    const denyForm = new URLSearchParams({ flow, decision: "deny" });
+    const denied = await fetch(`${base}/oauth/authorize`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: cookie.split(";")[0] as string,
+      },
+      body: denyForm,
+      redirect: "manual",
+    });
+    assert.equal(denied.status, 302);
+    const deniedLocation = new URL(denied.headers.get("location") ?? "");
+    assert.equal(deniedLocation.searchParams.get("error"), "access_denied");
+    assert.equal(deniedLocation.searchParams.get("state"), "state-123");
 
     const callback = await fetch(
       `${base}/soundcloud/callback?code=sc-auth-code&state=${encodeURIComponent(scState)}`,

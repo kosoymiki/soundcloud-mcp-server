@@ -316,6 +316,7 @@ bearer/OAuth authentication, rate limits, CORS allowlist and security headers.
   spawned with argument arrays (no shell), no `eval` on user input.
 - Web session: CDP bound to `127.0.0.1`; cookie file permission warning when
   group/other-readable.
+- MCP 2026-07-28 security/operational matrix: [`docs/SECURITY-2026-11.md`](docs/SECURITY-2026-11.md).
 - Audit: the 2026-11-10 byte-level review (P0–P4, every module) and its fixes are
   in [`docs/AUDIT-2026-11-10.md`](docs/AUDIT-2026-11-10.md). Re-run
   `npm run verify && npm run e2e` after any change.
