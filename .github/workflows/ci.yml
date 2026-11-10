@@ -20,27 +20,19 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Install ffmpeg (best effort, bounded)
-        timeout-minutes: 4
+      - name: Install ffmpeg (optional, non-blocking)
+        continue-on-error: true
+        timeout-minutes: 3
         shell: bash
         run: |
-          set -uo pipefail
           if command -v ffmpeg >/dev/null 2>&1; then
-            echo "ffmpeg already present: $(ffmpeg -version | head -1)"
+            echo "ffmpeg already present"
             exit 0
           fi
-          for attempt in 1 2 3; do
-            echo "apt attempt ${attempt}"
-            if sudo timeout 90 apt-get update -qq && sudo timeout 90 apt-get install -y --no-install-recommends ffmpeg; then
-              break
-            fi
-            sleep 5
-          done
-          if command -v ffmpeg >/dev/null 2>&1; then
-            echo "ffmpeg installed: $(ffmpeg -version | head -1)"
-          else
-            echo "::warning::ffmpeg unavailable; audio integration tests will be skipped"
-          fi
+          # No apt-get update: the runner image already has package lists, and a
+          # mirror stall must never fail the build (audio tests skip themselves).
+          sudo timeout 120 apt-get install -y --no-install-recommends ffmpeg \
+            || echo "::warning::ffmpeg unavailable; audio integration tests will be skipped"
       - run: npm run typecheck
       - run: npm run build
       - name: Test (per file, bounded)
