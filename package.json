@@ -23,7 +23,7 @@
     ".opencode"
   ],
   "engines": {
-    "node": ">=22.5"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "build": "tsc",
@@ -31,7 +31,7 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm test && npm run build",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test --test-timeout=120000 tests/*.test.ts",
     "auth": "node scripts/sc.mjs auth",
     "e2e": "node scripts/e2e.mjs",
     "cli": "node scripts/sc.mjs",

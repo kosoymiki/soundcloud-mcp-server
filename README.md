@@ -42,7 +42,7 @@ that can read files can follow it.
 
 | Component | Version / notes |
 |---|---|
-| Node.js | **>= 22.5** (tested on Node 24; `node:sqlite` is required) |
+| Node.js | **>= 24** (`node:sqlite` is unflagged from Node 24) |
 | npm | ships with Node |
 | ffmpeg / ffprobe | for the audio lab and analysis scripts (`FFMPEG_PATH`, `FFPROBE_PATH`) |
 | Chromium / Chrome | only for web-session tools (`SC_WEB_CHROME`, default `chromium-browser`) |

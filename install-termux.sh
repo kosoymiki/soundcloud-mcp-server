@@ -17,11 +17,10 @@ fail() { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 need_node() {
   command -v node >/dev/null 2>&1 || fail "node is not installed"
-  local major minor
   major=$(node -p 'process.versions.node.split(".")[0]')
   minor=$(node -p 'process.versions.node.split(".")[1]')
-  if [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 5 ]; }; then
-    fail "Node.js >= 22.5 required for node:sqlite (found $(node -v))"
+  if [ "$major" -lt 24 ]; then
+    fail "Node.js >= 24 required (node:sqlite is unflagged from Node 24; Node 22 needs --experimental-sqlite) (found $(node -v))"
   fi
   echo "node: $(node -v)  npm: $(npm -v)"
 }

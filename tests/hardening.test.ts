@@ -119,8 +119,10 @@ test("panel mutations accept the loopback origin but reject a foreign one", asyn
   const app = await startApp(config);
   try {
     const token = app.store.issueAccessToken("local", "panel").token;
+    // /api/audio/probe runs the CSRF/origin gate first and then fails fast on an
+    // empty path, so this test never leaves the machine.
     const request = (origin: string): Promise<Response> =>
-      fetch(`http://127.0.0.1:${config.port}/api/social/like`, {
+      fetch(`http://127.0.0.1:${config.port}/api/audio/probe`, {
         method: "POST",
         headers: {
           cookie: `scmcp_panel=${token}`,
@@ -128,7 +130,7 @@ test("panel mutations accept the loopback origin but reject a foreign one", asyn
           "x-scmcp-csrf": "1",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ kind: "track", urn: "soundcloud:tracks:1", action: "like" }),
+        body: JSON.stringify({ file_path: "" }),
       });
     const foreign = await request("http://evil.example");
     assert.equal(foreign.status, 403);
