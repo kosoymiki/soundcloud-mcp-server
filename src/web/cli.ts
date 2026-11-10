@@ -7,6 +7,9 @@ import { execFileSync } from "node:child_process";
 import { basename } from "node:path";
 import { AppError } from "../errors.js";
 import { WebActionSession } from "./actions.js";
+import { exportSoundCloudCookies, refreshSoundCloudCookies } from "./cookies.js";
+import { formatDoctorStatus, webSessionStatus } from "./doctor.js";
+import { runWebChain } from "./selftest.js";
 import { mimeForFile, WebUploader } from "./upload.js";
 
 interface ParsedArgs {
@@ -59,13 +62,37 @@ function probeDurationSeconds(filePath: string): number | undefined {
 
 function usage(): string {
   return [
+    "SoundCloud web-session runtime",
+    "",
     "Usage:",
+    "  web-upload cookies [--db <Cookies path>] [--out <json>] [--refresh] [--json]",
+    "                   export fresh SoundCloud cookies from Chrome (0600); --refresh",
+    "                   exchanges the stored refresh token (rotates it - prefer re-export)",
+    "  web-upload doctor [--probe] [--json]",
+    "                   cookie/token/Chromium status; --probe opens the live upload page",
     "  web-upload upload --file <path> [--title <title>] [--artist <artist>] [--genre <genre>]",
-    "                 [--tags a,b] [--permalink <slug>] [--album <album title>] [--album-urn <urn>]",
-    "                 [--album-type ALBUM|EP] [--license <license>] [--public|--private] [--verify]",
+    "                    [--tags a,b] [--permalink <slug>] [--album <album title>] [--album-urn <urn>]",
+    "                    [--album-type ALBUM|EP] [--license <license>] [--public|--private] [--verify]",
     "  web-upload album --title <title> --tracks <urn[,urn]> [--genre <genre>] [--ep]",
     "  web-upload actions",
+    "  web-upload selftest [--file <path>] [--keep] [--json]",
+    "                   full chain: cookies -> session -> album -> upload -> verify -> cleanup",
+    "",
+    "Typical chain:",
+    "  web-upload cookies && web-upload doctor --probe && \\",
+    "  web-upload upload --file song.mp3 --title song --album-urn soundcloud:playlists:123 --verify",
   ].join("\n");
+}
+
+function printCookies(summary: Record<string, unknown>): void {
+  const names = Array.isArray(summary.names) ? (summary.names as string[]) : [];
+  console.log(`cookies   ${summary.cookies} exported from ${summary.source}`);
+  console.log(`file      ${summary.outPath} (0600)`);
+  console.log(`token     ${summary.tokenExpiresAt ? `expires ${summary.tokenExpiresAt}` : "no oauth_token found"}`);
+  if (Array.isArray(summary.missingRequired) && (summary.missingRequired as string[]).length > 0) {
+    console.log(`missing   ${(summary.missingRequired as string[]).join(", ")}`);
+  }
+  console.log(`names     ${names.join(", ")}`);
 }
 
 async function main(): Promise<void> {
@@ -74,9 +101,64 @@ async function main(): Promise<void> {
     console.log(usage());
     return;
   }
-  if (!["actions", "album", "upload"].includes(command)) {
+  if (!["actions", "album", "upload", "cookies", "doctor", "selftest"].includes(command)) {
     console.log(usage());
     process.exitCode = 2;
+    return;
+  }
+  if (command === "selftest") {
+    const result = await runWebChain({
+      ...(flags.get("file") ? { file: flags.get("file") as string } : {}),
+      ...(flags.get("album") ? { albumTitle: flags.get("album") as string } : {}),
+      keep: flags.has("keep"),
+      logger: (level, message) => {
+        if (level !== "debug" || process.env.SC_WEB_VERBOSE === "1") console.error(`[web:${level}] ${message}`);
+      },
+    });
+    if (flags.has("json")) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      const total = result.steps.reduce((sum, step) => sum + step.ms, 0);
+      console.log(`chain ${result.ok ? "ok" : "FAILED"} in ${(total / 1000).toFixed(1)}s (cleaned: ${result.cleaned})`);
+      for (const step of result.steps) {
+        const detail = step.error ? step.error : step.detail ? JSON.stringify(step.detail).slice(0, 110) : "";
+        console.log(`  ${step.ok ? "ok  " : "FAIL"}  ${step.step.padEnd(14)} ${String(step.ms).padStart(6)}ms  ${detail}`);
+      }
+    }
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+  if (command === "cookies") {
+    const result = flags.has("refresh")
+      ? await refreshSoundCloudCookies({
+          ...(flags.get("out") ? { cookieFile: flags.get("out") as string } : {}),
+          ...(flags.get("token-url") ? { tokenUrl: flags.get("token-url") as string } : {}),
+        })
+      : exportSoundCloudCookies({
+          ...(flags.get("db") ? { dbPath: flags.get("db") as string } : {}),
+          ...(flags.get("out") ? { outPath: flags.get("out") as string } : {}),
+        });
+    if (flags.has("json")) {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (flags.has("refresh")) {
+      console.log(`token     refreshed; expires ${(result as { tokenExpiresAt?: string }).tokenExpiresAt ?? "?"}`);
+    } else {
+      printCookies(result as unknown as Record<string, unknown>);
+    }
+    return;
+  }
+  if (command === "doctor") {
+    const status = await webSessionStatus({
+      ...(flags.get("cookie-file") ? { cookieFile: flags.get("cookie-file") as string } : {}),
+      ...(flags.get("chrome") ? { chromePath: flags.get("chrome") as string } : {}),
+      probe: flags.has("probe"),
+    });
+    if (flags.has("json")) {
+      console.log(JSON.stringify(status, null, 2));
+    } else {
+      console.log(formatDoctorStatus(status));
+    }
+    if (!status.ok) process.exitCode = 1;
     return;
   }
   if (command === "album" && (!flags.get("title") || !flags.get("tracks"))) {

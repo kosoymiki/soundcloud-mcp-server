@@ -9,6 +9,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "./context.js";
 import { jsonTool, stringOrStringArray } from "./helpers.js";
 import { WebActionSession } from "../web/actions.js";
+import { exportSoundCloudCookies, refreshSoundCloudCookies } from "../web/cookies.js";
+import { webSessionStatus } from "../web/doctor.js";
+import { runWebChain } from "../web/selftest.js";
 import { WebUploader, type AlbumType } from "../web/upload.js";
 
 function probeDuration(ctx: ToolContext, filePath: string): number | undefined {
@@ -42,6 +45,103 @@ async function withWebSession<T>(ctx: ToolContext, run: (uploader: WebUploader, 
 }
 
 export function registerWebTools(server: McpServer, ctx: ToolContext): void {
+  jsonTool(
+    server,
+    "web_cookies_export",
+    {
+      title: "Export fresh SoundCloud cookies from the local browser",
+      description:
+        "Reads the local Chrome/Chromium cookie database (staging it through root on Android when needed), decrypts the SoundCloud cookies " +
+        "(OSCrypt v10, AES-128-CBC) and writes the 0600 JSON that the web-session tools consume. Values are never returned; " +
+        "the response reports the cookie names, token expiry and missing required cookies.",
+      schema: {
+        db_path: z.string().min(1).optional().describe("Explicit Chrome Cookies database path"),
+        out_path: z.string().min(1).optional().describe("Destination JSON (default DATA_DIR/chrome-soundcloud-cookies.json)"),
+      },
+      annotations: { idempotentHint: true, openWorldHint: false },
+    },
+    async (args) =>
+      exportSoundCloudCookies({
+        ...(args.db_path ? { dbPath: args.db_path as string } : {}),
+        ...(args.out_path ? { outPath: args.out_path as string } : {}),
+      })
+  );
+
+  jsonTool(
+    server,
+    "web_cookies_refresh",
+    {
+      title: "Refresh the stored SoundCloud web session token",
+      description:
+        "Exchanges the oauth_refresh_token in the cookie file for a new oauth_token (public-client refresh, no client secret) and rewrites the file. " +
+        "Useful when web_session_status reports an expiring token; no browser is needed.",
+      schema: {},
+      annotations: { idempotentHint: true, openWorldHint: true },
+    },
+    async () => refreshSoundCloudCookies()
+  );
+
+  jsonTool(
+    server,
+    "web_session_status",
+    {
+      title: "SoundCloud web-session status",
+      description:
+        "Reports cookie file freshness/permissions, oauth_token lifetime, Chromium availability and, with probe=true, opens the live upload page " +
+        "to confirm the session and count the discovered server actions.",
+      schema: {
+        probe: z.boolean().default(false).describe("Open the live upload page and verify the account"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async (args) =>
+      webSessionStatus({
+        probe: args.probe === true,
+        logger: (level, message) => (level === "debug" ? ctx.logger.debug(message) : level === "warn" ? ctx.logger.warn(message) : ctx.logger.info(message)),
+      })
+  );
+
+  jsonTool(
+    server,
+    "web_delete_track",
+    {
+      title: "Delete a track through the web session",
+      description:
+        "Deletes a track via api-v2 DELETE /tracks/{id} using the web session's OAuth cookie. Irreversible: the track disappears from the account " +
+        "and any album it was in. Use web_chain_selftest for a safe end-to-end check that cleans up after itself.",
+      schema: {
+        track_urn: z.string().min(1).describe("Track URN or numeric id, e.g. soundcloud:tracks:123456789"),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    async (args) => withWebSession(ctx, async (uploader) => {
+      await uploader.deleteTrack(args.track_urn as string);
+      return { deleted: true, track: args.track_urn };
+    })
+  );
+
+  jsonTool(
+    server,
+    "web_chain_selftest",
+    {
+      title: "End-to-end SoundCloud web-session self-test",
+      description:
+        "Runs the complete runtime chain on the real account: cookie check -> live session -> empty album -> private upload through the presigned S3 policy " +
+        "-> createTrack -> addToPlaylist -> read-back verification -> delete track and album. Leaves no residue unless keep=true.",
+      schema: {
+        file_path: z.string().min(1).optional().describe("Audio file to use; a 6-second tone is generated when omitted"),
+        keep: z.boolean().default(false).describe("Keep the created track/album for inspection"),
+      },
+      annotations: { destructiveHint: true, openWorldHint: true },
+    },
+    async (args) =>
+      runWebChain({
+        ...(args.file_path ? { file: ctx.uploads.resolvePath(args.file_path as string, "audio").path } : {}),
+        keep: args.keep === true,
+        logger: (level, message) => (level === "debug" ? ctx.logger.debug(message) : level === "warn" ? ctx.logger.warn(message) : ctx.logger.info(message)),
+      })
+  );
+
   jsonTool(
     server,
     "web_actions",

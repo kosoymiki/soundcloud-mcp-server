@@ -15,7 +15,7 @@
     ".opencode"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.5"
   },
   "scripts": {
     "build": "tsc",

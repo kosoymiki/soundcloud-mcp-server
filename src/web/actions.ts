@@ -9,6 +9,7 @@ import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { AppError } from "../errors.js";
+import { exportSoundCloudCookies, jwtClaims, pickOAuthToken, refreshSoundCloudCookies } from "./cookies.js";
 
 const DEFAULT_UPLOAD_URL = "https://soundcloud.com/n/upload";
 const DEFAULT_CHROME = "chromium-browser";
@@ -176,6 +177,7 @@ export class WebActionSession {
 
     const page = await this.browser.newPage();
     await page.setUserAgent(this.options.userAgent);
+    await this.refreshCookiesIfNeeded(cookieFile);
     const cookies = this.readCookies(cookieFile);
     if (cookies.length > 0) await page.setCookie(...cookies);
     this.page = page;
@@ -219,6 +221,40 @@ export class WebActionSession {
         status: 500,
         details: { error: String(error) },
       });
+    }
+  }
+
+  /** Refresh an about-to-expire web token so long sessions keep working unattended. */
+  private async refreshCookiesIfNeeded(file: string): Promise<void> {
+    if (!existsSync(file)) {
+      try {
+        const exported = exportSoundCloudCookies({ outPath: file });
+        this.log("info", `exported ${exported.cookies} cookies from ${exported.source}`);
+      } catch {
+        // No browser profile available; start() will surface the missing cookies.
+      }
+      return;
+    }
+    try {
+      const raw = JSON.parse(readFileSync(file, "utf8")) as { cookies?: CookieEntry[] };
+      const token = pickOAuthToken(raw.cookies ?? []);
+      const exp = token ? jwtClaims(token)?.exp : undefined;
+      if (!exp) return;
+      const remaining = exp - Math.floor(Date.now() / 1000);
+      if (remaining > 300) return;
+      // Prefer the browser profile: it stays the owner of the rotating refresh
+      // token, so re-reading it cannot invalidate the user's own session.
+      try {
+        const exported = exportSoundCloudCookies({ outPath: file });
+        this.log("info", `re-exported ${exported.cookies} cookies from ${exported.source}`);
+        return;
+      } catch {
+        // Fall back to exchanging the stored refresh token.
+      }
+      const result = await refreshSoundCloudCookies({ cookieFile: file });
+      this.log("info", `refreshed the web session token (${result.expiresInSeconds ?? "?"}s left)`);
+    } catch (error) {
+      this.log("warn", `web session token refresh skipped: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -415,8 +451,31 @@ export class WebActionSession {
     ) as Promise<T>;
   }
 
-  async close(): Promise<void> {
-    try {
+  /** DELETE an api-v2 resource with the session's OAuth cookie (tracks, playlists). */
+  async apiDelete(path: string, clientId?: string): Promise<void> {
+    const page = this.pageHandle;
+    const cookies = await page.cookies("https://soundcloud.com");
+    const token = cookies.find((cookie) => cookie.name === "oauth_token")?.value;
+    if (!token) throw new AppError("UNAUTHORIZED", "No oauth_token cookie in the browser session.", { status: 401 });
+    const claims = decodeJwtPayload(token);
+    const claimClientId = typeof claims?.client_id === "string" ? claims.client_id : undefined;
+    const resolvedClientId = clientId ?? process.env.SC_WEB_CLIENT_ID ?? claimClientId;
+    const url = `https://api-v2.soundcloud.com${path}${path.includes("?") ? "&" : "?"}client_id=${encodeURIComponent(resolvedClientId ?? "")}`;
+    await page.evaluate(
+      async (target: string, authToken: string) => {
+        const response = await fetch(target, {
+          method: "DELETE",
+          headers: { Authorization: `OAuth ${authToken}`, Accept: "application/json" },
+          credentials: "include",
+        });
+        if (response.status >= 400) throw new Error(`api-v2 DELETE ${response.status}: ${(await response.text()).slice(0, 200)}`);
+      },
+      url,
+      token
+    );
+  }
+
+  async close(): Promise<void> {    try {
       if (this.browser) await this.browser.disconnect();
     } catch {
       // Disconnect is best effort.

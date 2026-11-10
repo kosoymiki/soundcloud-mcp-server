@@ -1,6 +1,6 @@
 # SoundCloud MCP Server v2 — uploads, studio, web-session automation
 
-Production-grade SoundCloud MCP server: **50 MCP tools**, a browser control
+Production-grade SoundCloud MCP server: **55 MCP tools**, a browser control
 panel, a local audio lab (ffmpeg), and a web-session uploader that works even
 when SoundCloud API app registration is unavailable (Artist Pro gating).
 
@@ -17,7 +17,7 @@ when SoundCloud API app registration is unavailable (Artist Pro gating).
 
 ```bash
 git clone <repo> soundcloud-mcp-server && cd soundcloud-mcp-server
-bash install-termux.sh        # Termux: pkg deps + npm ci + build + 48 tests
+bash install-termux.sh        # Termux: pkg deps + npm ci + build + 62 tests
 # non-Termux: npm ci && npm run build && npm test
 ```
 
@@ -49,7 +49,7 @@ scratch, and keep `DATA_DIR` on internal storage (chmod 700).
 ```bash
 npm ci                 # or npm install
 npm run build          # tsc -> dist/
-npm test               # 48 unit tests
+npm test               # 62 unit tests
 npm run typecheck
 npm run e2e            # 16-check end-to-end harness (mock SoundCloud)
 npm start              # node dist/index.js
@@ -118,18 +118,42 @@ No SoundCloud token is ever pasted or copied.
 
 ### B. Web session (no API app required)
 
-1. Log in to `soundcloud.com` in a browser.
-2. Export cookies to JSON with `scripts/stealth-import-cookies.py` (or any
-   exporter producing `{ "cookies": [ { name, value, domain, path, secure, httpOnly } ] }`).
-3. `chmod 600` the file and point `SC_WEB_COOKIE_FILE` at it.
-4. Use `web_*` tools / `npm run web-upload`.
+```bash
+node dist/web/cli.js cookies        # fresh cookies from the local Chrome profile (0600)
+node dist/web/cli.js doctor --probe # cookie/token/Chromium check + live account
+node dist/web/cli.js selftest       # full chain, creates a private test track and deletes it
+```
 
-The server loads the live upload page, discovers the deployment-specific
-private server actions, and calls them through the app's own `callServer`
-runtime; uploads go to the presigned S3 URL, then `createTrackAction`, optional
-`createAlbumAction`, and `addToPlaylistAction` for existing albums.
+`cookies` reads Chrome/Chromium directly (on Android it stages the profile
+through `su`), decrypts the OSCrypt `v10` values and writes
+`DATA_DIR/chrome-soundcloud-cookies.json` with mode 0600. The file is the only
+input the web session needs; `SC_WEB_COOKIE_FILE` overrides its path.
 
-## MCP tools (50)
+Runtime chain, all through SoundCloud's own web app:
+
+```text
+cookies -> live session (/me) -> empty album (createAlbumAction)
+        -> createUploadPolicyAction -> presigned S3 PUT (MD5 checked)
+        -> createTrackAction (private) -> addToPlaylistAction
+        -> read-back (getTrackInfoAction + api-v2) -> delete track + album
+```
+
+`selftest` runs that chain on the real account and cleans up after itself
+(`--keep` leaves the track/album for inspection). `upload` performs the same
+upload leg for a real file, optionally into an existing album:
+
+```bash
+node dist/web/cli.js upload --file song.mp3 --title song --genre Electronic \
+  --album-urn soundcloud:playlists:123456789 --verify
+```
+
+Cookies expire after roughly an hour: `cookies` re-exports them from the browser,
+`cookies --refresh` exchanges the stored `oauth_refresh_token` instead (this
+rotates the token SoundCloud's web client also holds, so prefer re-export). The
+session refreshes an about-to-expire token by re-reading the browser profile
+before falling back to the refresh token.
+
+## MCP tools (55)
 
 **Profile (6):** `get_me`, `get_upload_quota`, `update_profile`,
 `upload_avatar`, `get_panel_url`, `open_auth_window`
@@ -151,8 +175,12 @@ runtime; uploads go to the presigned S3 URL, then `createTrackAction`, optional
 **Audio lab (7):** `audio_probe`, `read_audio_tags`, `edit_audio_tags`,
 `change_audio_speed`, `normalize_audio`, `trim_audio`, `convert_audio`
 
-**Web session (3):** `web_upload_track` (optional `album_title` or
-`album_urn`), `web_create_album`, `web_actions` (live action discovery)
+**Web session (8):** `web_upload_track` (optional `album_title` or
+`album_urn`), `web_create_album`, `web_actions` (live action discovery),
+`web_cookies_export` (fresh cookies from Chrome, values never returned),
+`web_cookies_refresh` (exchange the stored refresh token),
+`web_session_status` (cookie/token/Chromium health, `probe` opens the live page),
+`web_delete_track`, `web_chain_selftest` (full chain with cleanup)
 
 Lists accept `limit`, `max_items`, opaque `cursor`; IDs accept a numeric id,
 `soundcloud:<kind>:<id>` URN, or an `api.soundcloud.com` URL.
@@ -165,6 +193,9 @@ npm run web-upload -- upload --file song.mp3 --title "Song" --album "My Album"
 npm run web-upload -- upload --file song.mp3 --title "Song" --album-urn soundcloud:playlists:<id>
 npm run web-upload -- album --title "My Album" --tracks soundcloud:tracks:<id>
 npm run web-upload -- actions                  # list live server actions
+node dist/web/cli.js cookies                   # export fresh cookies from Chrome
+node dist/web/cli.js doctor --probe            # live session + action count
+node dist/web/cli.js selftest                  # full chain, cleans up
 ```
 
 ## Analysis & editing scripts
@@ -210,7 +241,7 @@ nonce CSP and no-store caching.
 
 ## MCP protocol support
 
-Two endpoints, same 50 tools, resource and prompt, same auth:
+Two endpoints, same 55 tools, resource and prompt, same auth:
 
 - **`/mcp`** — legacy Streamable HTTP (**2025-11-25**) via `@modelcontextprotocol/sdk` 1.32.2.
 - **`/mcp-v2`** — modern era (**2026-07-28**) via `@prefecthq/fastmcp-ts` 1.9.1, with tools
@@ -254,7 +285,7 @@ bearer/OAuth authentication, rate limits, CORS allowlist and security headers.
 | `src/audio/` | ffmpeg engine, ID3 file writer, audio service |
 | `src/panel/` | panel router/REST API + single-file UI |
 | `src/web/` | web-session transport (CDP/actions), uploader, CLI |
-| `tests/` | 48 unit tests (`npm test`) |
+| `tests/` | 62 unit tests (`npm test`) |
 | `scripts/` | CLI, E2E, cookie import, analysis/editing tools |
 | `docs/` | architecture, API notes, security/web-upload guides |
 

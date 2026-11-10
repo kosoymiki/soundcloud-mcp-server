@@ -279,12 +279,82 @@ export class WebUploader {
   }
 
   /** Look up a track by permalink through api-v2 (used for post-upload verification). */
-  async verifyPermalink(permalink: string): Promise<Record<string, unknown> | null> {
-    const me = await this.session.apiGet<{ id?: number }>("/me");
+  async verifyPermalink(permalink: string): Promise<Record<string, unknown> | null> {    const me = await this.session.apiGet<{ id?: number }>("/me");
     if (!me?.id) return null;
     const tracks = await this.session.apiGet<{ collection?: Array<Record<string, unknown>> }>(`/users/${me.id}/tracks?limit=50`);
     return tracks.collection?.find((track) => track.permalink === permalink) ?? null;
   }
+
+  /** Read a track back through api-v2 by URN or numeric id. */
+  async getTrack(trackUrnOrId: string): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.session.apiGet<Record<string, unknown>>(`/tracks/${numericId(trackUrnOrId)}`);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  /** Read a playlist/album back through api-v2 by URN or numeric id. */
+  async getAlbum(playlistUrnOrId: string): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.session.apiGet<Record<string, unknown>>(`/playlists/${numericId(playlistUrnOrId)}`);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  /** Delete a track (irreversible; SoundCloud returns 202 and removes it shortly). */
+  async deleteTrack(trackUrnOrId: string): Promise<void> {
+    await this.session.apiDelete(`/tracks/${numericId(trackUrnOrId)}`);
+  }
+
+  /** Delete an album/playlist (irreversible; SoundCloud returns 204). */
+  async deleteAlbum(playlistUrnOrId: string): Promise<void> {
+    await this.session.apiDelete(`/playlists/${numericId(playlistUrnOrId)}`);
+  }
+}
+
+function isNotFound(error: unknown): boolean {
+  if (error instanceof AppError && error.code === "NOT_FOUND") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /api-v2 404|\b404\b/.test(message);
+}
+
+/** Normalize `soundcloud:tracks:123`, `soundcloud:playlists:123` or `123` to its numeric id. */export function numericId(urnOrId: string): string {
+  const value = urnOrId.trim().replace(/\/+$/, "");
+  const tail = value.includes(":") ? value.split(":").pop() ?? "" : value.split("/").pop() ?? "";
+  if (!/^\d+$/.test(tail)) {
+    throw new AppError("BAD_REQUEST", `Expected a SoundCloud URN or numeric id, got "${urnOrId}".`, { status: 400 });
+  }
+  return tail;
+}
+
+/** Pull a playlist/album URN out of whatever shape a private action returned. */
+export function extractPlaylistUrn(value: unknown): string | null {
+  const visit = (node: unknown, depth: number): string | null => {
+    if (!node || depth > 4) return null;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const found = visit(item, depth + 1);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (typeof node !== "object") return null;
+    const record = node as Record<string, unknown>;
+    for (const key of ["urn", "playlistUrn", "playlist_urn"]) {
+      const candidate = record[key];
+      if (typeof candidate === "string" && candidate.startsWith("soundcloud:playlists:")) return candidate;
+    }
+    for (const key of ["playlist", "playlists", "results", "created", "data"]) {
+      const found = visit(record[key], depth + 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  return visit(value, 0);
 }
 
 /** Pull a track URN out of whatever shape the private action returned. */

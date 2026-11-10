@@ -8,7 +8,7 @@ description: Work on the soundcloud-mcp-server project (50-tool MCP server, pane
 ## What this project is
 
 A self-hosted **MCP server for SoundCloud** plus a browser panel and local audio
-lab. It exposes 50 MCP tools over Streamable HTTP (`/mcp`), a REST panel
+lab. It exposes 55 MCP tools over Streamable HTTP (`/mcp`), a REST panel
 (`/panel`), and two upload paths:
 
 1. **Official API** (`api.soundcloud.com`) — needs a registered SoundCloud app
@@ -36,13 +36,13 @@ SoundCloud password.
      `SC_WEB_COOKIE_FILE`. No password sharing.
 4. **Run**: `npm start` → panel `http://localhost:3000/panel`, MCP
    `http://localhost:3000/mcp` (Bearer `MCP_LOCAL_TOKEN` or OAuth discovery).
-5. **Verify**: `npm run typecheck && npm test` (48 tests), `curl /health`,
+5. **Verify**: `npm run typecheck && npm test` (62 tests), `curl /health`,
    open `/panel` (redirects to login), POST `/mcp` without token → 401 +
    `WWW-Authenticate`.
 
 ## Protocol support
 
-Two MCP endpoints serve the same 50 tools, the `soundcloud://guide` resource and
+Two MCP endpoints serve the same 55 tools, the `soundcloud://guide` resource and
 the `plan_upload` prompt: `/mcp` (legacy **2025-11-25**, official SDK 1.32.2) and
 `/mcp-v2` (modern **2026-07-28**, FastMCP 1.9.1, tools registered per SoundCloud
 connection). Modern requests need `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`
@@ -55,14 +55,14 @@ layer is isolated in `src/mcp/`; auth/panel/web-session/audio are shared.
 |---|---|---|
 | HTTP server | `src/server.ts` | Express, security headers/CORS/rate limits, `/mcp`, panel mount |
 | MCP | `src/mcp/*` | server factory, session manager |
-| Tools | `src/tools/*` | 50 MCP tools (profile, tracks, playlists, social, audio, web) |
+| Tools | `src/tools/*` | 55 MCP tools (profile, tracks, playlists, social, audio, web) |
 | SoundCloud API | `src/soundcloud/*` | REST client, HTTP, multipart, ID3 |
 | Auth | `src/auth/*` | OAuth+PKCE, encrypted store, token service, crypto |
 | Uploads | `src/uploads/*` | staging + upload service |
 | Audio lab | `src/audio/*` | ffmpeg engine, ID3 writer, trim/speed/normalize/convert |
 | Panel | `src/panel/*` | REST API + single-file UI (nonce CSP) |
 | Web session | `src/web/*` | Chromium/CDP, live action discovery, uploader, CLI |
-| Verification | `tests/` | 48 unit tests; `scripts/e2e.mjs` mock E2E |
+| Verification | `tests/` | 62 unit tests; `scripts/e2e.mjs` mock E2E |
 
 Data flow (web upload): `createUploadPolicyAction(name,size,mime)` →
 PUT presigned S3 → `createTrackAction({uid,trackInput})` → optional
@@ -70,6 +70,13 @@ PUT presigned S3 → `createTrackAction({uid,trackInput})` → optional
 
 ## Web-session pipeline (critical knowledge)
 
+- **Runtime chain (one command):** `node dist/web/cli.js selftest` — cookies →
+  live session → empty album → private upload (presigned S3, MD5 checked) →
+  `createTrackAction` → `addToPlaylistAction` → read-back → delete track+album.
+  `--keep` leaves the artifacts for inspection.
+- **Fresh cookies:** `node dist/web/cli.js cookies` reads the local Chrome DB
+  (root-staged on Android), decrypts OSCrypt `v10` and writes 0600 JSON;
+  `doctor --probe` verifies the live account and action count.
 - The uploader lives in a **lazy Next.js chunk**; action ids are per deployment.
   Discover them from the live page (`web_actions` tool or
   `scripts/page-actions.mjs`), never hardcode. Stale ids → `409
@@ -120,6 +127,6 @@ no credential collection. Keep `.env` and cookie JSON out of version control.
 
 ## Definition of done for changes
 
-`npm run typecheck` rc 0, `npm test` 48/48, `npm run build`, live `/health`
+`npm run typecheck` rc 0, `npm test` 62/62, `npm run build`, live `/health`
 smoke, README/env docs updated, no session-specific hardcodes in `src/tests/docs`,
 and evidence recorded (commands + outputs).

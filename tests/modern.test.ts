@@ -49,12 +49,30 @@ async function modernRequest(
   return { status: response.status, body: await response.text() };
 }
 
+/** Fetch every page of tools/list (the modern handler pages at 50 entries). */
+async function listAllTools(server: ReturnType<typeof createModernServer>): Promise<{ name: string }[]> {
+  const tools: { name: string }[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 10; page += 1) {
+    const response = await modernRequest(server, "tools/list", cursor ? { cursor } : {}, page + 1);
+    assert.equal(response.status, 200);
+    const payload = JSON.parse(response.body) as { result?: { tools?: { name: string }[]; nextCursor?: string } };
+    tools.push(...(payload.result?.tools ?? []));
+    cursor = payload.result?.nextCursor;
+    if (!cursor) break;
+  }
+  return tools;
+}
+
 test("modern 2026-07-28 endpoint serves the full tool registry", async () => {
-  const { status, body } = await modernRequest(createModernServer(fakeContext), "tools/list");
-  assert.equal(status, 200);
-  assert.match(body, /"name":"get_me"/);
-  assert.match(body, /"name":"web_upload_track"/);
-  assert.match(body, /"name":"trim_audio"/);
+  const server = createModernServer(fakeContext);
+  const tools = await listAllTools(server);
+  const names = tools.map((tool) => tool.name);
+  assert.equal(tools.length, 55);
+  assert.ok(names.includes("get_me"));
+  assert.ok(names.includes("web_upload_track"));
+  assert.ok(names.includes("web_chain_selftest"));
+  assert.ok(names.includes("trim_audio"));
 });
 
 test("modern 2026-07-28 endpoint serves project resources", async () => {
@@ -107,8 +125,22 @@ test("/mcp-v2 is wired through the HTTP app with bearer auth", async () => {
   try {
     const tools = await fetch(endpoint, { method: "POST", headers: headers("tools/list"), body: body("tools/list", {}) });
     assert.equal(tools.status, 200);
-    const toolsJson = (await tools.json()) as { result: { tools: { name: string }[] } };
+    const toolsJson = (await tools.json()) as { result: { tools: { name: string }[]; nextCursor?: string } };
     assert.equal(toolsJson.result.tools.length, 50);
+    let total = toolsJson.result.tools.length;
+    let toolNames = toolsJson.result.tools.map((tool) => tool.name);
+    let cursor = toolsJson.result.nextCursor;
+    while (cursor) {
+      const page = await fetch(endpoint, { method: "POST", headers: headers("tools/list"), body: body("tools/list", { cursor }) });
+      assert.equal(page.status, 200);
+      const pageJson = (await page.json()) as { result: { tools: { name: string }[]; nextCursor?: string } };
+      total += pageJson.result.tools.length;
+      toolNames = toolNames.concat(pageJson.result.tools.map((tool) => tool.name));
+      cursor = pageJson.result.nextCursor;
+    }
+    assert.equal(total, 55);
+    assert.ok(toolNames.includes("web_chain_selftest"));
+    assert.ok(toolNames.includes("web_cookies_export"));
 
     const resource = await fetch(endpoint, {
       method: "POST",
