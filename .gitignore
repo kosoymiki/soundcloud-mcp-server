@@ -8,3 +8,12 @@ dev-scripts/
 scripts/dev/
 *.bak
 *.tmp
+
+# Local runtime state and secrets (never commit)
+chrome-soundcloud-cookies.json
+*.cookies.json
+data/
+encryption.key
+local-token
+.env.*
+!.env.example

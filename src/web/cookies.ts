@@ -16,7 +16,7 @@ import { createDecipheriv, createHash, pbkdf2Sync } from "node:crypto";
 import { accessSync, chmodSync, constants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir, release, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { AppError } from "../errors.js";
 
@@ -159,6 +159,31 @@ function sameSiteName(value: number | bigint | null): BrowserCookie["sameSite"] 
 
 export function isAndroidHost(): boolean {
   return /android/i.test(release());
+}
+
+/** Nearest ancestor containing `.git`, or null. */
+export function findGitWorkTree(path: string): string | null {
+  let dir = dirname(resolve(path));
+  for (let depth = 0; depth < 40; depth += 1) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/** Cookie exports must never land inside a repository that could be committed/pushed. */
+function assertOutsideRepository(outPath: string): void {
+  if (process.env.SC_ALLOW_COOKIES_IN_REPO === "1") return;
+  const root = findGitWorkTree(outPath);
+  if (root) {
+    throw new AppError(
+      "BAD_REQUEST",
+      `Refusing to write cookies inside the git repository at ${root}. Use DATA_DIR (default ~/.local/share/soundcloud-mcp) or set SC_ALLOW_COOKIES_IN_REPO=1.`,
+      { status: 400, details: { outPath, repository: root } }
+    );
+  }
 }
 
 function shellQuote(value: string): string {
@@ -326,6 +351,8 @@ export interface ExportOptions {
 
 /** Export SoundCloud cookies from Chrome into the 0600 JSON the uploader reads. */
 export function exportSoundCloudCookies(options: ExportOptions = {}): CookieExportResult {
+  const outPath = options.outPath ?? join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json");
+  assertOutsideRepository(outPath);
   const dbPath = findChromeCookiesDb(options.dbPath);
   const staged = options.forceCopy || !readable(dbPath) ? stageCookiesDatabase(dbPath) : null;
   const readPath = staged?.path ?? dbPath;
@@ -340,7 +367,6 @@ export function exportSoundCloudCookies(options: ExportOptions = {}): CookieExpo
       status: 401,
     });
   }
-  const outPath = options.outPath ?? join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json");
   mkdirSync(dirname(outPath), { recursive: true, mode: 0o700 });
   const exportedAt = new Date().toISOString();
   const payload: CookieExport = { exported_at: exportedAt, source: "chrome-sqlite", cookies };
@@ -383,6 +409,7 @@ export async function refreshSoundCloudCookies(
   options: { cookieFile?: string; tokenUrl?: string; clientId?: string } = {}
 ): Promise<RefreshResult> {
   const outPath = options.cookieFile ?? join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json");
+  assertOutsideRepository(outPath);
   if (!existsSync(outPath)) {
     throw new AppError("UNAUTHORIZED", `No cookie file at ${outPath}; export cookies first.`, { status: 401 });
   }

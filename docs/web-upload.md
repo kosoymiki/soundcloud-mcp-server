@@ -64,8 +64,10 @@ node dist/web/cli.js doctor       # file age, token expiry, Chromium
 Chrome/Chromium paths), stages it into a private temp directory through `su`
 when Android denies the read, decrypts the OSCrypt `v10` values (AES-128-CBC,
 PBKDF2-SHA1 "peanuts"/"saltysalt", `SHA-256(host_key)` prefix) and writes the
-0600 JSON the uploader reads. Cookie values are never printed. `v20` app-bound
-values cannot be decrypted outside the browser and are reported as an error.
+0600 JSON the uploader reads. Cookie values are never printed. Writes inside a
+git work tree are refused (`SC_ALLOW_COOKIES_IN_REPO=1` overrides), so the
+export cannot be committed with the project. `v20` app-bound values cannot be
+decrypted outside the browser and are reported as an error.
 
 `doctor --probe` additionally opens the upload page, calls `/me` and counts the
 live server actions, which is the definitive "is the session alive" check.

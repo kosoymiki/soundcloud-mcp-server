@@ -127,7 +127,9 @@ node dist/web/cli.js selftest       # full chain, creates a private test track a
 `cookies` reads Chrome/Chromium directly (on Android it stages the profile
 through `su`), decrypts the OSCrypt `v10` values and writes
 `DATA_DIR/chrome-soundcloud-cookies.json` with mode 0600. The file is the only
-input the web session needs; `SC_WEB_COOKIE_FILE` overrides its path.
+input the web session needs; `SC_WEB_COOKIE_FILE` overrides its path. Exports
+never land inside a git work tree (override only with
+`SC_ALLOW_COOKIES_IN_REPO=1`) and the repo `.gitignore` covers local state.
 
 Runtime chain, all through SoundCloud's own web app:
 

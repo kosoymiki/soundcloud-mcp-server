@@ -14,9 +14,12 @@ import {
   chromeCookieKey,
   chromeExpiryToUnix,
   decryptChromeValue,
+  exportSoundCloudCookies,
+  findGitWorkTree,
   inspectCookieFile,
   jwtClaims,
   pickOAuthToken,
+  refreshSoundCloudCookies,
 } from "../src/web/cookies.js";
 import { webSessionStatus } from "../src/web/doctor.js";
 import { extractPlaylistUrn, numericId } from "../src/web/upload.js";
@@ -125,4 +128,22 @@ test("numericId accepts URNs and bare ids, rejects anything else", () => {
   assert.equal(numericId("2326955937"), "2326955937");
   assert.equal(numericId("soundcloud:playlists:42/"), "42");
   assert.throws(() => numericId("soundcloud:tracks:abc"), AppError);
+});
+
+test("cookie exports refuse to write inside a git work tree", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "sc-repo-"));
+  const { mkdirSync } = await import("node:fs");
+  mkdirSync(join(repo, ".git"));
+  assert.equal(findGitWorkTree(join(repo, "sub", "cookies.json")), repo);
+
+  assert.equal(findGitWorkTree("/nonexistent-sc-root/out/cookies.json"), null);
+
+  assert.throws(
+    () => exportSoundCloudCookies({ outPath: join(repo, "cookies.json") }),
+    (error: unknown) => error instanceof AppError && /git repository/.test(error.message)
+  );
+  await assert.rejects(
+    refreshSoundCloudCookies({ cookieFile: join(repo, "cookies.json") }),
+    (error: unknown) => error instanceof AppError && /git repository/.test(error.message)
+  );
 });
