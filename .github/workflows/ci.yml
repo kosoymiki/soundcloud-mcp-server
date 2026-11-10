@@ -21,7 +21,22 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
-      - run: npm test
+      - name: Test (per file, bounded)
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for file in tests/*.test.ts; do
+            echo "::group::${file}"
+            if ! timeout 240 node --import tsx --test --test-timeout=120000 --test-force-exit "${file}"; then
+              status=1
+              echo "::error::${file} failed or timed out"
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+          done
+          exit "${status}"
       - run: npm run build
 
   docker:
