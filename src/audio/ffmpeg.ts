@@ -187,12 +187,23 @@ export async function probeMedia(binary: string, path: string): Promise<ProbeRes
   };
 }
 
-export async function listFilters(binary: string): Promise<Set<string>> {
-  const result = await run(binary, ["-hide_banner", "-filters"], { timeoutMs: 30_000 });
+/** Parse `ffmpeg -filters` output; the flag column is `..`, `...` or `TS` across builds. */
+export function parseFilterList(output: string): Set<string> {
   const filters = new Set<string>();
-  for (const line of result.stdout.split("\n")) {
-    const match = /^ \.\.\s+(\S+)\s+/.exec(line);
-    if (match?.[1]) filters.add(match[1]);
+  for (const line of output.split("\n")) {
+    const parts = line.trim().split(/\s+/);
+    for (let index = 1; index < parts.length; index += 1) {
+      if (/^[AVN|]+->[AVN|]+$/.test(parts[index] ?? "")) {
+        const name = parts[index - 1];
+        if (name && /^[A-Za-z0-9_]+$/.test(name)) filters.add(name);
+        break;
+      }
+    }
   }
   return filters;
+}
+
+export async function listFilters(binary: string): Promise<Set<string>> {
+  const result = await run(binary, ["-hide_banner", "-filters"], { timeoutMs: 30_000 });
+  return parseFilterList(result.stdout);
 }

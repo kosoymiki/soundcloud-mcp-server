@@ -19,6 +19,7 @@ import { isAmbiguousUploadFailure } from "../src/soundcloud/api.js";
 import { HttpClient } from "../src/soundcloud/http.js";
 import { inspectCookieFile } from "../src/web/cookies.js";
 import { createLogger } from "../src/logger.js";
+import { parseFilterList } from "../src/audio/ffmpeg.js";
 import { freePort, seedLocalConnection, startApp, testConfig } from "./helpers.js";
 
 test("non-idempotent requests are not retried on 429, GETs are", async () => {
@@ -109,6 +110,24 @@ test("health exposes counts, not connection identifiers", async () => {
   } finally {
     await app.close();
   }
+});
+
+test("parseFilterList accepts both ffmpeg flag-column layouts", () => {
+  const older = [
+    "Filters:",
+    "  T.. = Timeline support",
+    " ... abench            A->A       Benchmark part of a filtergraph.",
+    " ... loudnorm          A->A       EBU R128 loudness normalization",
+    " ... rubberband        A->A       Apply time-stretching and pitch-shifting.",
+  ].join("\n");
+  const newer = [
+    "Filters:",
+    " TS aap               AA->A      Apply Affine Projection algorithm.",
+    " .. loudnorm          A->A       EBU R128 loudness normalization",
+    " .. rubberband        A->A       Apply time-stretching and pitch-shifting.",
+  ].join("\n");
+  assert.deepEqual([...parseFilterList(older)].sort(), ["abench", "loudnorm", "rubberband"]);
+  assert.deepEqual([...parseFilterList(newer)].sort(), ["aap", "loudnorm", "rubberband"]);
 });
 
 test("panel mutations accept the loopback origin but reject a foreign one", async () => {
