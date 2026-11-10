@@ -37,7 +37,9 @@ test("sealed values round-trip and detect tampering", () => {
   const key = Buffer.alloc(32, 7);
   const sealed = seal("secret-value", key);
   assert.equal(open(sealed, key), "secret-value");
-  assert.throws(() => open(sealed.replace(/.$/, "A"), key));
+  // The last base64url character can already be "A"; mutate to a different byte.
+  const tampered = `${sealed.slice(0, -1)}${sealed.endsWith("A") ? "B" : "A"}`;
+  assert.throws(() => open(tampered, key));
   assert.throws(() => open(sealed, Buffer.alloc(32, 8)));
 });
 
