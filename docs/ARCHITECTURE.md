@@ -48,6 +48,12 @@
 | `src/uploads/service.ts` | path allowlist, ID3 merge, artwork, progress events |
 | `src/panel/api.ts` | panel REST API, login/logout, SSE, busboy uploads |
 | `src/panel/ui.ts` | server-rendered panel and browser sign-in pages |
+| `src/web/actions.ts` | Chromium/CDP session, live action discovery, `callServer` bridge, api-v2 GET/DELETE |
+| `src/web/upload.ts` | upload policy -> S3 PUT -> createTrack/createAlbum/addToPlaylist, verify/delete helpers |
+| `src/web/cookies.ts` | Chrome cookie DB staging (root on Android), OSCrypt v10 decryption, 0600 export, token refresh |
+| `src/web/doctor.ts` | cookie/token/Chromium health and live session probe |
+| `src/web/selftest.ts` | end-to-end runtime chain with automatic cleanup |
+| `src/web/cli.ts` | `cookies`, `doctor`, `selftest`, `upload`, `album`, `actions` commands |
 | `src/events.ts` | in-process event bus for SSE |
 
 ## Token flows
@@ -161,3 +167,34 @@ uploaded as new tracks; the server does not simulate an in-place replace.
   with a nonce, and the same auth/session model as the API.
 - **In-memory OAuth codes/clients**: short-lived and safer than persisting them;
   servers must be single-replica for OAuth sessions.
+
+## MCP transports
+
+Two endpoints share one tool source (`src/tools/*`):
+
+- `/mcp` — Streamable HTTP on the official SDK (protocol `2025-11-25`), legacy
+  `initialize` handshake, session manager with token binding.
+- `/mcp-v2` — modern era (`2026-07-28`) through `@prefecthq/fastmcp-ts`; each
+  request carries `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` (for
+  `resources/read` / `prompts/get`) and the `io.modelcontextprotocol/*` `_meta`
+  envelope. Tools are registered per SoundCloud connection so handlers keep their
+  bound `ToolContext`; resources and prompts come from `src/mcp/resources.ts`.
+
+`tools/list` is returned in pages of 50 with `nextCursor`.
+
+## Web-session runtime
+
+The upload path that does not need an API app:
+
+```text
+cookies -> live session (/me) -> createAlbumAction
+        -> createUploadPolicyAction -> presigned S3 PUT (MD5 checked)
+        -> createTrackAction -> addToPlaylistAction
+        -> read-back (getTrackInfoAction + api-v2) -> delete track + album
+```
+
+Action ids are deployment-specific and discovered from the live client bundle;
+the bridge injects a Turbopack module to reach the app's own `callServer`.
+Cookies are exported from the browser profile into `DATA_DIR` (0600, never inside
+a git work tree) and can be refreshed by re-reading the profile or, as a
+fallback, by exchanging `oauth_refresh_token`.

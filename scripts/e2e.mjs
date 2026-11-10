@@ -250,7 +250,9 @@ async function main() {
     assert.ok(toolNames.includes("upload_track"));
     assert.ok(toolNames.includes("edit_audio_tags"));
     assert.ok(toolNames.includes("open_auth_window"));
-    assert.equal(toolNames.length, 47);
+    assert.ok(toolNames.includes("web_chain_selftest"));
+    assert.ok(toolNames.includes("web_cookies_export"));
+    assert.ok(toolNames.length >= 55, `expected at least 55 tools, got ${toolNames.length}`);
     ok(`MCP tools/list (${toolNames.length} tools)`);
 
     const mp3 = join(dataDir, "e2e-tone.mp3");

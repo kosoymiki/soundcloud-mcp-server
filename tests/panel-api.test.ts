@@ -145,6 +145,20 @@ test("panel API reads state, streams an upload and patches a track", async () =>
     assert.equal(state.tracks.items[0]?.title, "One");
     assert.equal(state.quota.secondsLeft, 7200);
 
+    const webStatus = await fetch(`${base}/api/web/status`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(webStatus.status, 200);
+    const web = (await webStatus.json()) as {
+      ok: boolean;
+      cookie_file: { path: string; exists: boolean; cookies: number };
+      token: { present: boolean };
+      chrome: { path: string };
+    };
+    assert.equal(typeof web.cookie_file.path, "string");
+    assert.equal(typeof web.cookie_file.exists, "boolean");
+    assert.equal(Array.isArray(web.warnings), true);
+
     const bytes = Buffer.alloc(2048, 7);
     const form = new FormData();
     form.set("upload_id", "panel-upload-1");

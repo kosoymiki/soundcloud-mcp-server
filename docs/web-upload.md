@@ -43,8 +43,10 @@ private action) can be used to read it back.
 
 - Chromium or Google Chrome available as `chromium-browser` (Termux/Android) or
   any binary pointed to by `SC_WEB_CHROME`.
-- Exported SoundCloud cookies from a logged-in browser session, in the format
-  produced by [`scripts/stealth-import-cookies.py`](../scripts/stealth-import-cookies.py):
+- Exported SoundCloud cookies from a logged-in browser session. `node dist/web/cli.js cookies`
+  writes them automatically on Android/Linux; elsewhere export with any DevTools-based
+  exporter (or [`scripts/stealth-import-cookies.py`](../scripts/stealth-import-cookies.py)
+  after copying them into that browser), in this shape:
 
 ```json
 { "cookies": [ { "name": "oauth_token", "value": "…", "domain": "soundcloud.com", "path": "/", "secure": true, "httpOnly": true } ] }
@@ -89,13 +91,13 @@ node dist/web/cli.js actions
 
 # Upload a file and create an album that contains it
 node dist/web/cli.js upload \
-  --file /storage/emulated/0/Music/Telegram/song.mp3 \
+  --file ~/Music/song.mp3 \
   --title song --artist aero --genre Electronic --tags "demo,2026" \
   --album song --album-type ALBUM --verify
 
 # Upload a file and append it to an existing album
 node dist/web/cli.js upload \
-  --file /storage/emulated/0/Music/Telegram/next.mp3 \
+  --file ~/Music/next.mp3 \
   --title second-song --album-urn soundcloud:playlists:123456789
 
 # Create an album from existing tracks

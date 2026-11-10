@@ -15,6 +15,7 @@ import type { SoundCloudApi } from "../soundcloud/api.js";
 import type { UploadService } from "../uploads/service.js";
 import type { AudioService } from "../audio/service.js";
 import type { EventBus, ServerEvent } from "../events.js";
+import { webSessionStatus } from "../web/doctor.js";
 import { type Authenticator, type AuthResult, extractBearer, readCookie } from "../http/auth.js";
 import { clearPanelCookie, panelCookie } from "../http/cookies.js";
 import { pkcePair, randomToken } from "../auth/crypto.js";
@@ -345,6 +346,14 @@ export function createPanelRouter(deps: PanelDeps): Router {
   });
 
   // ── State ─────────────────────────────────────────────────────────────────
+
+  router.get("/api/web/status", requireAuth, async (_req, res, next) => {
+    try {
+      res.json(await webSessionStatus({ probe: false }));
+    } catch (error) {
+      next(toAppError(error));
+    }
+  });
 
   router.get("/api/state", requireAuth, async (req, res, next) => {
     try {

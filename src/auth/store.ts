@@ -308,9 +308,18 @@ export class Store {
       }
       this.state = parsed;
     } catch (error) {
+      // Never destroy a state file we failed to read: keep it for recovery.
+      let preserved: string | null = null;
+      try {
+        preserved = `${this.statePath}.corrupt-${Date.now()}`;
+        renameSync(this.statePath, preserved);
+      } catch {
+        preserved = null;
+      }
       this.logger.error("Failed to load encrypted state; starting empty", {
         error: error instanceof Error ? error.message : String(error),
         path: this.statePath,
+        preserved,
       });
     }
   }

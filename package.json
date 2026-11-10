@@ -1,9 +1,17 @@
 {
   "name": "soundcloud-mcp-server",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Production-grade SoundCloud MCP server: upload tracks, manage your artist profile, playlists and social graph, plus a browser panel controllable from any MCP client.",
   "license": "AGPL-3.0-or-later",
   "author": "Fork maintainers; original work Copyright (C) 2026 Marcell Kehmstedt",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kosoymiki/soundcloud-mcp-server.git"
+  },
+  "homepage": "https://github.com/kosoymiki/soundcloud-mcp-server#readme",
+  "bugs": {
+    "url": "https://github.com/kosoymiki/soundcloud-mcp-server/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "files": [
@@ -22,11 +30,14 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm test && npm run build",
     "test": "node --import tsx --test tests/*.test.ts",
     "auth": "node scripts/sc.mjs auth",
     "e2e": "node scripts/e2e.mjs",
     "cli": "node scripts/sc.mjs",
-    "web-upload": "node dist/web/cli.js"
+    "web-upload": "node dist/web/cli.js",
+    "web": "node dist/web/cli.js",
+    "doctor": "node dist/web/cli.js doctor"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

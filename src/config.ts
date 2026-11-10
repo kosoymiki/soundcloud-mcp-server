@@ -8,6 +8,17 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
+
+/** Single source of truth for the reported version: package.json. */
+function readPackageVersion(): string {
+  try {
+    const pkg = createRequire(import.meta.url)("../package.json") as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
 export type McpMode = "local" | "oauth" | "both";
 
@@ -187,7 +198,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       : "info";
 
   const config: Config = {
-    version: "2.0.0",
+    version: readPackageVersion(),
     port: intEnv("PORT", 3000, 1, 65535),
     host: env("HOST") ?? "127.0.0.1",
     publicUrl,

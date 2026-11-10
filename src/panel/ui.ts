@@ -65,6 +65,10 @@ export function renderLoginPage(config: Config, nonce: string, options: LoginPag
          If it is still valid, open <a href="/panel">the studio</a>; otherwise sign in again.</div>`
       : ""
   }
+  <div class="note"><strong>No API app?</strong> The web-session path needs no app
+     registration: export cookies with <code>node dist/web/cli.js cookies</code>, check it with
+     <code>doctor --probe</code>, and upload with <code>selftest</code>/<code>upload</code> or the
+     <code>web_*</code> MCP tools. The browser panel itself needs SoundCloud app credentials.</div>
   <div class="hint">MCP clients can drive the same actions through tools or the REST API.</div>
 </main></body></html>`;
 }
@@ -395,6 +399,11 @@ export function renderPanel(config: Config, nonce: string): string {
         <input id="avatar-input" type="file" accept="image/*" style="display:none" />
         <button id="avatar-btn">Upload avatar</button></div>
     </div>
+    <div class="card" style="margin-top:14px"><h3>Web session</h3>
+      <div class="small mono" id="web-status" style="white-space:pre-line">—</div>
+      <div class="actions" style="margin-top:10px"><button id="web-status-refresh">Recheck</button>
+        <span class="small muted">Cookies live outside the repo; re-export with <span class="mono">node dist/web/cli.js cookies</span> when this expires.</span></div>
+    </div>
     <div class="card" style="margin-top:14px"><h3>Endpoints</h3>
       <div class="small mono" id="settings-endpoints">—</div>
       <div class="small muted" style="margin-top:8px">Control everything from opencode2 via MCP tools or these REST endpoints.
@@ -438,6 +447,7 @@ export function renderPanel(config: Config, nonce: string): string {
     Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function(b){ b.classList.toggle('active', b.getAttribute('data-tab')===name); });
     Array.prototype.forEach.call(document.querySelectorAll('.section'), function(s){ s.classList.toggle('active', s.id==='sec-'+name); });
     if(name==='upload') renderQueue();
+    if(name==='settings') loadWebStatus();
   }
   $('tabs').addEventListener('click', function(e){ var b=e.target.closest('button'); if(b) tab(b.getAttribute('data-tab')); });
 
@@ -677,8 +687,23 @@ export function renderPanel(config: Config, nonce: string): string {
   function paintSettings(){
     var me=state.me||{};
     ['username','full_name','city','country','website','website_title','description'].forEach(function(k){ var el=$('pf-'+k); if(el) el.value=me[k]||''; });
-    $('settings-endpoints').innerHTML = ['/api/state','/api/upload','/api/tracks','/api/playlists','/api/social/like','/api/events'].map(function(p){return '<div>'+esc(location.origin+p)+'</div>';}).join('');
+    $('settings-endpoints').innerHTML = ['/api/state','/api/web/status','/api/upload','/api/tracks','/api/playlists','/api/social/like','/api/events'].map(function(p){return '<div>'+esc(location.origin+p)+'</div>';}).join('');
   }
+  function loadWebStatus(){
+    var box=$('web-status'); if(!box) return;
+    box.textContent='checking…';
+    api('/api/web/status').then(function(s){
+      var f=s.cookie_file||{}, t=s.token||{}, c=s.chrome||{}, lines=[];
+      lines.push((f.exists?'ok  ':'FAIL')+'  cookies  '+f.cookies+' (mode '+(f.mode||'?')+', age '+fmtAge(f.age_seconds)+')');
+      lines.push((t.present&&!t.expired?'ok  ':'FAIL')+'  token    '+(t.expired?'expired':t.expires_in_seconds!=null?'valid '+fmtAge(t.expires_in_seconds):'unknown'));
+      lines.push((c.exists?'ok  ':'FAIL')+'  chromium '+(c.path||'—'));
+      (s.errors||[]).forEach(function(e){ lines.push('error  '+e); });
+      (s.warnings||[]).forEach(function(w){ lines.push('warn   '+w); });
+      box.textContent=lines.join(String.fromCharCode(10));
+    }).catch(function(e){ box.textContent='unavailable: '+e.message; });
+  }
+  function fmtAge(s){ if(s==null) return '?'; if(s<90) return Math.round(s)+'s'; if(s<5400) return Math.round(s/60)+'m'; return Math.round(s/3600)+'h'; }
+  $('web-status-refresh').onclick=loadWebStatus;
   $('save-profile').onclick=function(){
     var body={}; ['username','full_name','city','country','website','website_title','description'].forEach(function(k){ var v=$('pf-'+k).value.trim(); if(v) body[k]=v; });
     api('/api/profile',{method:'POST',body:body}).then(function(){toast('Profile saved');loadState();}).catch(function(err){toast(err.message,true);});

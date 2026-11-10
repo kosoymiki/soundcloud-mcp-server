@@ -16,13 +16,20 @@ when SoundCloud API app registration is unavailable (Artist Pro gating).
 ## Start here (5 minutes)
 
 ```bash
+# private repo: add the friend as a collaborator, or send a source tarball
 git clone <repo> soundcloud-mcp-server && cd soundcloud-mcp-server
-bash install-termux.sh        # Termux: pkg deps + npm ci + build + 62 tests
+bash install-termux.sh        # Termux: pkg deps + npm ci + build + 63 tests
 # non-Termux: npm ci && npm run build && npm test
+npm run verify                # typecheck + tests + build
 ```
 
 Then edit `.env`, choose authorization (A or B below), `npm start`, and open
 `http://localhost:3000/panel`.
+
+**Sharing it with someone:** the repository is private, so either add them as a
+collaborator (`gh api repos/<owner>/soundcloud-mcp-server/collaborators/<user> -X PUT -f permission=push`)
+or hand them a source archive (`git archive --format=tar.gz --prefix=soundcloud-mcp-server/ HEAD -o soundcloud-mcp-server.tar.gz`)
+— the archive contains only tracked source files, no cookies or state.
 
 **Project master skill (for AI agents):**
 [`.opencode/skills/soundcloud-mcp-server/SKILL.md`](.opencode/skills/soundcloud-mcp-server/SKILL.md)
@@ -35,7 +42,7 @@ that can read files can follow it.
 
 | Component | Version / notes |
 |---|---|
-| Node.js | **>= 20.19** (tested on Node 24) |
+| Node.js | **>= 22.5** (tested on Node 24; `node:sqlite` is required) |
 | npm | ships with Node |
 | ffmpeg / ffprobe | for the audio lab and analysis scripts (`FFMPEG_PATH`, `FFPROBE_PATH`) |
 | Chromium / Chrome | only for web-session tools (`SC_WEB_CHROME`, default `chromium-browser`) |
@@ -49,7 +56,7 @@ scratch, and keep `DATA_DIR` on internal storage (chmod 700).
 ```bash
 npm ci                 # or npm install
 npm run build          # tsc -> dist/
-npm test               # 62 unit tests
+npm test               # 63 unit tests
 npm run typecheck
 npm run e2e            # 16-check end-to-end harness (mock SoundCloud)
 npm start              # node dist/index.js
@@ -99,6 +106,9 @@ All settings are environment variables (`.env.example` is the reference).
 | `SC_WEB_HEADLESS` | `true` | run the web-session browser headless |
 | `SC_WEB_TIMEOUT_MS` | `90000` | navigation timeout |
 | `SC_WEB_CLIENT_ID` | JWT claim | api-v2 client id used for verification |
+| `CHROME_COOKIES_DB` | auto-detected | Chrome/Chromium cookie database used by `web-upload cookies` |
+| `SC_WEB_TOKEN_URL` | `https://secure.soundcloud.com/oauth/token` | token endpoint for `cookies --refresh` |
+| `SC_ALLOW_COOKIES_IN_REPO` | `0` | allow cookie exports inside a git work tree (unsafe default) |
 
 ## Authorization
 
@@ -154,6 +164,39 @@ Cookies expire after roughly an hour: `cookies` re-exports them from the browser
 rotates the token SoundCloud's web client also holds, so prefer re-export). The
 session refreshes an about-to-expire token by re-reading the browser profile
 before falling back to the refresh token.
+
+**Platform support for `cookies`:** Android (root, Chrome/Chromium) and
+Linux (Chrome/Chromium) decrypt the `v10` OSCrypt values. On macOS/Windows the
+browser uses Keychain/DPAPI, so automatic decryption is not implemented — export
+cookies manually with any DevTools-based exporter (the JSON shape above) and
+point `SC_WEB_COOKIE_FILE` at it.
+
+## Connect an MCP client
+
+The server speaks Streamable HTTP with a bearer token, so any MCP client that
+supports HTTP transports can use it (Claude Desktop, Cursor, opencode, custom
+SDKs):
+
+```json
+{
+  "mcpServers": {
+    "soundcloud": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer <contents of DATA_DIR/local-token>"
+      }
+    }
+  }
+}
+```
+
+- `DATA_DIR/local-token` is generated on first start (0600). Copy its value, not
+  the file, into the client config.
+- Modern clients (protocol `2026-07-28`) can point at `http://localhost:3000/mcp-v2`
+  instead; the tool/resource/prompt surface is identical.
+- Keep `HOST=127.0.0.1` unless you terminate TLS in front of the server; then set
+  `PUBLIC_URL=https://…` and `MCP_TRUST_PROXY=true`.
 
 ## MCP tools (55)
 
@@ -232,7 +275,7 @@ python3 scripts/speaker-change.py track.mp3 114 120
 
 `trim-track.mjs` and the audio-lab tools resolve paths through `SC_MEDIA_DIRS`;
 include the input directory, e.g.
-`SC_MEDIA_DIRS=/storage/emulated/0/Music/Telegram:~ npm run ...`.
+`SC_MEDIA_DIRS=~/Music:~ npm run ...`.
 
 ## Browser panel
 
@@ -287,7 +330,7 @@ bearer/OAuth authentication, rate limits, CORS allowlist and security headers.
 | `src/audio/` | ffmpeg engine, ID3 file writer, audio service |
 | `src/panel/` | panel router/REST API + single-file UI |
 | `src/web/` | web-session transport (CDP/actions), uploader, CLI |
-| `tests/` | 62 unit tests (`npm test`) |
+| `tests/` | 63 unit tests (`npm test`) |
 | `scripts/` | CLI, E2E, cookie import, analysis/editing tools |
 | `docs/` | architecture, API notes, security/web-upload guides |
 

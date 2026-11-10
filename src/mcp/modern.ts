@@ -35,7 +35,7 @@ function collectTools(ctx: ToolContext): ToolRecord[] {
 }
 
 export function createModernServer(ctx: ToolContext): FastMCP {
-  const modern = new FastMCP({ name: "soundcloud-mcp-server", version: "2.0.0" });
+  const modern = new FastMCP({ name: "soundcloud-mcp-server", version: ctx.config.version });
   for (const tool of collectTools(ctx)) {
     modern.tool(
       {

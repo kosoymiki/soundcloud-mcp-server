@@ -49,14 +49,14 @@ test("policyHeaders mirrors the web client contract", () => {
       { key: "Content-Length", value: "1234" },
       { key: "Expect", value: "100-continue" },
       { key: "x-amz-acl", value: "private" },
-      { key: "x-amz-meta-user-id", value: "985913425" },
+      { key: "x-amz-meta-user-id", value: "123456789" },
       { key: "Content-Disposition", value: "attachment;filename=\"SoundCloud%20Download\"; filename*=utf-8''song.mp3" },
     ],
   };
   const headers = policyHeaders(policy, "audio/mpeg");
   assert.equal(headers["Content-Type"], "audio/mpeg");
   assert.equal(headers["x-amz-acl"], "private");
-  assert.equal(headers["x-amz-meta-user-id"], "985913425");
+  assert.equal(headers["x-amz-meta-user-id"], "123456789");
   assert.equal(headers["Content-Disposition"], "attachment;filename=\"SoundCloud%20Download\"; filename*=utf-8''song.mp3");
   assert.equal(headers.Host, undefined);
   assert.equal(headers["Content-Length"], undefined);

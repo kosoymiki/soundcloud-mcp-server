@@ -96,12 +96,12 @@ test("modern 2026-07-28 endpoint serves prompts", async () => {
   const got = await modernRequest(
     server,
     "prompts/get",
-    { name: "plan_upload", arguments: { file: "/storage/emulated/0/Download/a.mp3" } },
+    { name: "plan_upload", arguments: { file: "/music/a.mp3" } },
     2,
     "plan_upload"
   );
   assert.equal(got.status, 200);
-  assert.match(got.body, /Upload plan for \/storage\/emulated\/0\/Download\/a\.mp3/);
+  assert.match(got.body, /Upload plan for \/music\/a\.mp3/);
   assert.match(got.body, /web_upload_track/);
 });
 

@@ -20,8 +20,8 @@ need_node() {
   local major minor
   major=$(node -p 'process.versions.node.split(".")[0]')
   minor=$(node -p 'process.versions.node.split(".")[1]')
-  if [ "$major" -lt 20 ] || { [ "$major" -eq 20 ] && [ "$minor" -lt 19 ]; }; then
-    fail "Node.js >= 20.19 required (found $(node -v))"
+  if [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 5 ]; }; then
+    fail "Node.js >= 22.5 required for node:sqlite (found $(node -v))"
   fi
   echo "node: $(node -v)  npm: $(npm -v)"
 }
@@ -50,10 +50,11 @@ else
 fi
 
 say "Building TypeScript"
+npm run typecheck
 npm run build
 
 if [ "$SKIP_TESTS" -eq 0 ]; then
-  say "Running unit tests (48)"
+  say "Running unit tests (63)"
   npm test
 fi
 
@@ -72,11 +73,14 @@ cat <<'EOF'
 1. Edit .env: PUBLIC_URL, MCP_MODE, SC_MEDIA_DIRS, FFMPEG_PATH/FFPROBE_PATH.
 2. Auth (choose one):
    A) Official API app:  node scripts/sc.mjs auth --client-id ... --client-secret ...
-   B) Web session:       log in to soundcloud.com, export cookies with
-      scripts/stealth-import-cookies.py, chmod 600 the JSON, set SC_WEB_COOKIE_FILE.
+   B) Web session:       log in to soundcloud.com in a browser, then:
+        node dist/web/cli.js cookies          # fresh cookies from Chrome (0600)
+        node dist/web/cli.js doctor --probe   # verify the live session
+        node dist/web/cli.js selftest         # full chain, deletes its own test data
 3. Start:  npm start
    Panel: http://localhost:3000/panel
-   MCP:   http://localhost:3000/mcp  (Authorization: Bearer $(cat DATA_DIR/local-token))
-4. Verify: curl -s http://localhost:3000/health
-5. Read the project master skill: .opencode/skills/soundcloud-mcp-server/SKILL.md
+   MCP:   http://localhost:3000/mcp  (Authorization: Bearer <DATA_DIR/local-token>)
+4. Verify: curl -s http://localhost:3000/health && npm run verify
+5. Connect an MCP client: see "Connect an MCP client" in README.md.
+6. Read the project master skill: .opencode/skills/soundcloud-mcp-server/SKILL.md
 EOF

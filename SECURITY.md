@@ -35,6 +35,17 @@ malicious root user, or a SoundCloud-side breach.
 - **Browser sessions.** The panel cookie contains a server access token, is
   `HttpOnly`, `SameSite=Lax`, and `Secure` when `PUBLIC_URL` is HTTPS. Logout
   revokes the token server-side.
+- **Exported web cookies.** `DATA_DIR/chrome-soundcloud-cookies.json` holds live
+  SoundCloud web-session cookies (the same credential class as a browser
+  profile). It is written `0600`, is ignored by `.gitignore`, and the exporter
+  refuses to write inside any git work tree (`SC_ALLOW_COOKIES_IN_REPO=1` is the
+  explicit override). Cookie values are never logged or returned by tools — only
+  names, counts and token expiry are reported. Treat the file like a password:
+  delete it when no longer needed.
+- **Corrupt state is preserved, not overwritten.** If `state.enc` cannot be
+  decrypted or parsed, it is renamed to `state.enc.corrupt-<timestamp>` before
+  the server starts empty, so a failed migration never destroys credentials
+  silently.
 
 ## OAuth server hardening
 

@@ -36,7 +36,7 @@ SoundCloud password.
      `SC_WEB_COOKIE_FILE`. No password sharing.
 4. **Run**: `npm start` → panel `http://localhost:3000/panel`, MCP
    `http://localhost:3000/mcp` (Bearer `MCP_LOCAL_TOKEN` or OAuth discovery).
-5. **Verify**: `npm run typecheck && npm test` (62 tests), `curl /health`,
+5. **Verify**: `npm run typecheck && npm test` (63 tests), `curl /health`,
    open `/panel` (redirects to login), POST `/mcp` without token → 401 +
    `WWW-Authenticate`.
 
@@ -62,7 +62,7 @@ layer is isolated in `src/mcp/`; auth/panel/web-session/audio are shared.
 | Audio lab | `src/audio/*` | ffmpeg engine, ID3 writer, trim/speed/normalize/convert |
 | Panel | `src/panel/*` | REST API + single-file UI (nonce CSP) |
 | Web session | `src/web/*` | Chromium/CDP, live action discovery, uploader, CLI |
-| Verification | `tests/` | 62 unit tests; `scripts/e2e.mjs` mock E2E |
+| Verification | `tests/` | 63 unit tests; `scripts/e2e.mjs` mock E2E |
 
 Data flow (web upload): `createUploadPolicyAction(name,size,mime)` →
 PUT presigned S3 → `createTrackAction({uid,trackInput})` → optional
@@ -127,6 +127,6 @@ no credential collection. Keep `.env` and cookie JSON out of version control.
 
 ## Definition of done for changes
 
-`npm run typecheck` rc 0, `npm test` 62/62, `npm run build`, live `/health`
+`npm run typecheck` rc 0, `npm test` 63/63, `npm run build`, live `/health`
 smoke, README/env docs updated, no session-specific hardcodes in `src/tests/docs`,
 and evidence recorded (commands + outputs).

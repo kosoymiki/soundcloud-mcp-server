@@ -125,7 +125,7 @@ test("extractPlaylistUrn walks createAlbumAction results", () => {
 
 test("numericId accepts URNs and bare ids, rejects anything else", () => {
   assert.equal(numericId("soundcloud:tracks:2435416680"), "2435416680");
-  assert.equal(numericId("2326955937"), "2326955937");
+  assert.equal(numericId("123456789"), "123456789");
   assert.equal(numericId("soundcloud:playlists:42/"), "42");
   assert.throws(() => numericId("soundcloud:tracks:abc"), AppError);
 });

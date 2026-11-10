@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Store } from "../src/auth/store.js";
 import { TokenService } from "../src/auth/tokenService.js";
@@ -144,5 +144,15 @@ test("concurrent refreshes are single-flighted", async () => {
   assert.equal(a, "new-access-token");
   assert.equal(b, "new-access-token");
   assert.equal(fetchCalls, 1);
+  store.dispose();
+});
+
+test("a corrupt state file is preserved, never silently overwritten", () => {
+  const config = testConfig();
+  writeFileSync(join(config.dataDir, "state.enc"), "this is not AES-GCM data\n", { mode: 0o600 });
+  const store = new Store(config, createLogger("error"));
+  assert.deepEqual(store.listConnections(), []);
+  const preserved = readdirSync(config.dataDir).filter((name) => name.startsWith("state.enc.corrupt-"));
+  assert.equal(preserved.length, 1);
   store.dispose();
 });
