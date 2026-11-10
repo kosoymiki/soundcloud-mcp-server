@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import Busboy from "busboy";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +19,8 @@ const exec = promisify(execFile);
 
 function hasFfmpeg(binary: string): boolean {
   try {
-    execFile(binary, ["-version"]);
+    // Async execFile never throws on ENOENT synchronously; this check must be sync.
+    execFileSync(binary, ["-version"], { stdio: "ignore" });
     return true;
   } catch {
     return false;

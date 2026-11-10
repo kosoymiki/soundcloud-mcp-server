@@ -20,6 +20,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Install ffmpeg (audio-lab integration tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm run typecheck
       - name: Test (per file, bounded)
         shell: bash
