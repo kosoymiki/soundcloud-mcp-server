@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppError } from "../errors.js";
 import { WebActionSession } from "./actions.js";
-import { inspectCookieFile } from "./cookies.js";
+import { defaultCookieFile, inspectCookieFile } from "./cookies.js";
 import { extractPlaylistUrn, extractTrackUrn, numericId, WebUploader } from "./upload.js";
 
 export interface ChainStep {
@@ -128,7 +128,7 @@ export async function runWebChain(options: ChainOptions = {}): Promise<ChainResu
   try {
     await record(steps, "cookies", () => {
       const file = inspectCookieFile(
-        cookieFile ?? join(process.env.HOME ?? "", ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json")
+        cookieFile ?? defaultCookieFile()
       );
       if (!file.exists) throw new Error(`no cookie file at ${cookieFile ?? "the default path"}`);
       if (file.expiresInSeconds !== null && file.expiresInSeconds <= 0) throw new Error("oauth_token is expired; re-export cookies");

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { AppError } from "../errors.js";
-import { exportSoundCloudCookies, jwtClaims, pickOAuthToken, refreshSoundCloudCookies } from "./cookies.js";
+import { defaultCookieFile, exportSoundCloudCookies, jwtClaims, pickOAuthToken, refreshSoundCloudCookies } from "./cookies.js";
 
 const DEFAULT_UPLOAD_URL = "https://soundcloud.com/n/upload";
 const DEFAULT_CHROME = "chromium-browser";
@@ -104,7 +104,7 @@ export class WebActionSession {
   constructor(options: WebSessionOptions = {}) {
     this.options = {
       chromePath: options.chromePath ?? process.env.SC_WEB_CHROME ?? DEFAULT_CHROME,
-      cookieFile: options.cookieFile ?? process.env.SC_WEB_COOKIE_FILE ?? join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json"),
+      cookieFile: options.cookieFile ?? defaultCookieFile(),
       uploadUrl: options.uploadUrl ?? process.env.SC_WEB_UPLOAD_URL ?? DEFAULT_UPLOAD_URL,
       debugPort: options.debugPort ?? Number(process.env.SC_WEB_DEBUG_PORT ?? 9333),
       headless: options.headless ?? (process.env.SC_WEB_HEADLESS ?? "true") !== "false",

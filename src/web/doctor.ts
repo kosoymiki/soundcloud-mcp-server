@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { WebActionSession } from "./actions.js";
-import { inspectCookieFile, jwtClaims, pickOAuthToken } from "./cookies.js";
+import { defaultCookieFile, inspectCookieFile, jwtClaims, pickOAuthToken } from "./cookies.js";
 
 export interface DoctorOptions {
   cookieFile?: string;
@@ -51,14 +51,13 @@ export interface DoctorStatus {
   };
 }
 
-const DEFAULT_COOKIE_FILE = join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json");
 
 function resolveChromePath(explicit?: string): string {
   return explicit ?? process.env.SC_WEB_CHROME ?? "chromium-browser";
 }
 
 export async function webSessionStatus(options: DoctorOptions = {}): Promise<DoctorStatus> {
-  const cookieFile = options.cookieFile ?? process.env.SC_WEB_COOKIE_FILE ?? DEFAULT_COOKIE_FILE;
+  const cookieFile = options.cookieFile ?? defaultCookieFile();
   const chromePath = resolveChromePath(options.chromePath);
   const file = inspectCookieFile(cookieFile);
   const errors: string[] = [];

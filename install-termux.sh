@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
 # Reproducible installer for soundcloud-mcp-server (Termux + Linux/macOS).
-# Idempotent: safe to re-run. Usage: bash install-termux.sh [--skip-tests]
+# Idempotent: safe to re-run. Usage: bash install-termux.sh [--skip-tests] [--dry-run]
 set -euo pipefail
 
 SKIP_TESTS=0
+DRY_RUN=0
 for arg in "$@"; do
   case "$arg" in
     --skip-tests) SKIP_TESTS=1 ;;
-    -h|--help) sed -n '2,6p' "$0"; exit 0 ;;
+    --dry-run) DRY_RUN=1 ;;
+    -h|--help) sed -n '2,3p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
 
 say() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
 fail() { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+run() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '  [dry-run] %s\n' "$*"
+  else
+    "$@"
+  fi
+}
 
 need_node() {
   command -v node >/dev/null 2>&1 || fail "node is not installed"
   major=$(node -p 'process.versions.node.split(".")[0]')
-  minor=$(node -p 'process.versions.node.split(".")[1]')
   if [ "$major" -lt 24 ]; then
     fail "Node.js >= 24 required (node:sqlite is unflagged from Node 24; Node 22 needs --experimental-sqlite) (found $(node -v))"
   fi
@@ -29,8 +37,8 @@ say "Checking environment"
 if [ -n "${PREFIX:-}" ] && command -v pkg >/dev/null 2>&1; then
   echo "Termux detected ($PREFIX)"
   say "Installing system packages (nodejs git ffmpeg chromium python python-numpy)"
-  pkg update -y || true
-  pkg install -y nodejs git ffmpeg chromium python python-numpy
+  run pkg update -y || true
+  run pkg install -y nodejs git ffmpeg chromium python python-numpy
 else
   echo "Non-Termux environment: verifying required commands"
   for c in node npm ffmpeg ffprobe git; do
@@ -43,29 +51,34 @@ need_node
 
 say "Installing npm dependencies"
 if [ -f package-lock.json ]; then
-  npm ci --no-audit --no-fund
+  run npm ci --no-audit --no-fund
 else
-  npm install --no-audit --no-fund
+  run npm install --no-audit --no-fund
 fi
 
 say "Building TypeScript"
-npm run typecheck
-npm run build
+run npm run typecheck
+run npm run build
 
 if [ "$SKIP_TESTS" -eq 0 ]; then
-  say "Running unit tests (72)"
-  npm test
+  say "Running unit tests (81)"
+  run npm test
 fi
 
 say "Preparing configuration"
 if [ ! -f .env ]; then
-  cp .env.example .env
+  run cp .env.example .env
   echo "created .env from .env.example"
 else
   echo ".env already exists (left untouched)"
 fi
-mkdir -p "${DATA_DIR:-$HOME/.local/share/soundcloud-mcp}"
-chmod 700 "${DATA_DIR:-$HOME/.local/share/soundcloud-mcp}" || true
+run mkdir -p "${DATA_DIR:-$HOME/.local/share/soundcloud-mcp}"
+run chmod 700 "${DATA_DIR:-$HOME/.local/share/soundcloud-mcp}" || true
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  say "Dry run complete (nothing was changed)"
+  exit 0
+fi
 
 say "Next steps"
 cat <<'EOF'

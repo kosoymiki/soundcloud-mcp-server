@@ -55,11 +55,25 @@ export function freePort(): Promise<number> {
 
 export async function startApp(config: Config): Promise<ServerHandle> {
   const handle = createApp(config, createLogger("error"));
+  // Always wait for the socket: without this a caller can issue requests (or
+  // block the loop with spawnSync) before listen() has completed.
+  await new Promise<void>((resolve, reject) => {
+    if (handle.server.listening) {
+      resolve();
+      return;
+    }
+    const onListening = (): void => {
+      handle.server.off("error", onError);
+      resolve();
+    };
+    const onError = (error: Error): void => {
+      handle.server.off("listening", onListening);
+      reject(error);
+    };
+    handle.server.once("listening", onListening);
+    handle.server.once("error", onError);
+  });
   if (config.port === 0) {
-    await new Promise<void>((resolve) => {
-      if (handle.server.listening) resolve();
-      else handle.server.once("listening", () => resolve());
-    });
     const address = handle.server.address() as AddressInfo;
     config.port = address.port;
     handle.url = `http://127.0.0.1:${address.port}`;

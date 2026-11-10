@@ -42,6 +42,7 @@ jobs:
             echo "::warning::ffmpeg unavailable; audio integration tests will be skipped"
           fi
       - run: npm run typecheck
+      - run: npm run build
       - name: Test (per file, bounded)
         shell: bash
         run: |
@@ -58,7 +59,9 @@ jobs:
             echo "::endgroup::"
           done
           exit "${status}"
-      - run: npm run build
+      - name: E2E user journey (mock SoundCloud)
+        run: npm run e2e
+
 
   docker:
     runs-on: ubuntu-24.04

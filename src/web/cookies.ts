@@ -16,8 +16,7 @@ import { createDecipheriv, createHash, pbkdf2Sync } from "node:crypto";
 import { accessSync, chmodSync, constants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir, release, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { dirname, join, resolve } from "node:path";import { DatabaseSync } from "node:sqlite";
 import { AppError } from "../errors.js";
 
 export interface BrowserCookie {
@@ -46,6 +45,13 @@ export interface CookieExportResult {
   expiresInSeconds: number | null;
   missingRequired: string[];
   source: string;
+}
+
+/** Cookie file location shared by the CLI, doctor, selftest and the uploader. */
+export function defaultCookieFile(): string {
+  if (process.env.SC_WEB_COOKIE_FILE) return resolve(process.env.SC_WEB_COOKIE_FILE);
+  const dataDir = process.env.DATA_DIR ?? join(homedir(), ".local", "share", "soundcloud-mcp");
+  return join(resolve(dataDir), "chrome-soundcloud-cookies.json");
 }
 
 export interface JwtClaims {
@@ -358,7 +364,7 @@ export interface ExportOptions {
 
 /** Export SoundCloud cookies from Chrome into the 0600 JSON the uploader reads. */
 export function exportSoundCloudCookies(options: ExportOptions = {}): CookieExportResult {
-  const outPath = options.outPath ?? join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json");
+  const outPath = options.outPath ?? defaultCookieFile();
   assertOutsideRepository(outPath);
   const dbPath = findChromeCookiesDb(options.dbPath);
   const staged = options.forceCopy || !readable(dbPath) ? stageCookiesDatabase(dbPath) : null;
@@ -415,7 +421,7 @@ export interface RefreshResult {
 export async function refreshSoundCloudCookies(
   options: { cookieFile?: string; tokenUrl?: string; clientId?: string } = {}
 ): Promise<RefreshResult> {
-  const outPath = options.cookieFile ?? join(homedir(), ".local", "share", "soundcloud-mcp", "chrome-soundcloud-cookies.json");
+  const outPath = options.cookieFile ?? defaultCookieFile();
   assertOutsideRepository(outPath);
   if (!existsSync(outPath)) {
     throw new AppError("UNAUTHORIZED", `No cookie file at ${outPath}; export cookies first.`, { status: 401 });

@@ -18,7 +18,7 @@ when SoundCloud API app registration is unavailable (Artist Pro gating).
 ```bash
 # private repo: add the friend as a collaborator, or send a source tarball
 git clone <repo> soundcloud-mcp-server && cd soundcloud-mcp-server
-bash install-termux.sh        # Termux: pkg deps + npm ci + build + 72 tests
+bash install-termux.sh        # Termux: pkg deps + npm ci + build + 81 tests
 # non-Termux: npm ci && npm run build && npm test
 npm run verify                # typecheck + tests + build
 ```
@@ -56,7 +56,7 @@ scratch, and keep `DATA_DIR` on internal storage (chmod 700).
 ```bash
 npm ci                 # or npm install
 npm run build          # tsc -> dist/
-npm test               # 72 unit tests
+npm test               # 81 unit tests
 npm run typecheck
 npm run e2e            # 16-check end-to-end harness (mock SoundCloud)
 npm start              # node dist/index.js
@@ -333,7 +333,7 @@ bearer/OAuth authentication, rate limits, CORS allowlist and security headers.
 | `src/audio/` | ffmpeg engine, ID3 file writer, audio service |
 | `src/panel/` | panel router/REST API + single-file UI |
 | `src/web/` | web-session transport (CDP/actions), uploader, CLI |
-| `tests/` | 72 unit tests (`npm test`) |
+| `tests/` | 81 unit tests (`npm test`) |
 | `scripts/` | CLI, E2E, cookie import, analysis/editing tools |
 | `docs/` | architecture, API notes, security/web-upload guides |
 
